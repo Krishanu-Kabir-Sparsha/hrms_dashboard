@@ -1,0 +1,536 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <t t-name="hrms_dashboard.Dashboard">
+        <div class="zoho_dashboard_wrapper">
+            <!-- Loading -->
+            <t t-if="state.loading">
+                <div class="zoho_loading">
+                    <div class="zoho_loading_spinner"/>
+                </div>
+            </t>
+
+            <t t-else="">
+                <!-- Left Sidebar -->
+                <div class="zoho_sidebar">
+                    <t t-foreach="sidebarItems" t-as="item" t-key="item.id">
+                        <div class="zoho_sidebar_item"
+                             t-att-class="{ active: state.currentView === item.id }"
+                             t-on-click="() => this.onSidebarClick(item)">
+                            <span class="zoho_sidebar_icon" t-esc="item.icon"/>
+                            <span class="zoho_sidebar_text" t-esc="item.label"/>
+                        </div>
+                    </t>
+                </div>
+
+                <!-- Main Wrapper -->
+                <div class="zoho_main_wrapper">
+                    
+                    <!-- Top Navigation Bar -->
+                    <div class="zoho_top_nav">
+                        <div class="zoho_top_nav_tabs">
+                            <t t-foreach="mainTabs" t-as="tab" t-key="tab.id">
+                                <div class="zoho_top_nav_tab"
+                                     t-att-class="{ active: state.activeMainTab === tab.id }"
+                                     t-on-click="() => this.onMainTabClick(tab.id)"
+                                     t-esc="tab.label"/>
+                            </t>
+                        </div>
+                        <div class="zoho_top_nav_actions">
+                            <button class="zoho_quick_add_btn" t-on-click="addLeave">+ Quick Add</button>
+                        </div>
+                    </div>
+
+                    <div class="zoho_content_area">
+                        
+                        <!-- HOME / MY SPACE VIEW -->
+                        <t t-if="state.currentView === 'home'">
+                            <div class="zoho_home_layout">
+                                <!-- Employee Sidebar -->
+                                <div class="zoho_employee_sidebar">
+                                    <div class="zoho_employee_card">
+                                        <div class="zoho_employee_image">
+                                            <t t-if="state.employee and state.employee.image_1920">
+                                                <img t-att-src="'data:image/png;base64,' + state.employee.image_1920"/>
+                                            </t>
+                                            <t t-else="">
+                                                <span class="zoho_avatar_placeholder">👤</span>
+                                            </t>
+                                        </div>
+                                        
+                                        <h3 class="zoho_employee_name">
+                                            <t t-if="state.employee" t-esc="state.employee.name"/>
+                                        </h3>
+                                        
+                                        <p class="zoho_employee_title">
+                                            <t t-if="state.employee and state.employee.job_id" t-esc="state.employee.job_id[1]"/>
+                                        </p>
+
+                                        <!-- Check-in Box -->
+                                        <div class="zoho_checkin_box" t-att-class="{ checked_in: state.employee and state.employee.attendance_state === 'checked_in' }">
+                                            <div class="zoho_checkin_label">
+                                                <t t-if="state.employee and state.employee.attendance_state === 'checked_in'">
+                                                    <span class="status_checked_in">✓ Checked In</span>
+                                                </t>
+                                                <t t-else="">
+                                                    <span class="status_checked_out">○ Yet to check-in</span>
+                                                </t>
+                                            </div>
+                                            <div class="zoho_timer" t-esc="formattedTimer"/>
+                                        </div>
+
+                                        <button class="zoho_checkin_btn"
+                                                t-att-class="{ checkout: state.employee and state.employee.attendance_state === 'checked_in' }"
+                                                t-on-click="onCheckInOut">
+                                            <t t-if="state.employee and state.employee.attendance_state === 'checked_in'">Check-out</t>
+                                            <t t-else="">Check-in</t>
+                                        </button>
+
+                                        <!-- Quick Stats -->
+                                        <div class="zoho_quick_stats">
+                                            <div class="zoho_quick_stat" t-on-click="openPayslips">
+                                                <span class="stat_value"><t t-esc="state.employee and state.employee.payslip_count or 0"/></span>
+                                                <span class="stat_label">Payslips</span>
+                                            </div>
+                                            <div class="zoho_quick_stat" t-on-click="openTimesheets">
+                                                <span class="stat_value"><t t-esc="state.employee and state.employee.emp_timesheets or 0"/></span>
+                                                <span class="stat_label">Timesheets</span>
+                                            </div>
+                                            <div class="zoho_quick_stat" t-on-click="openContracts">
+                                                <span class="stat_value"><t t-esc="state.employee and state.employee.contracts_count or 0"/></span>
+                                                <span class="stat_label">Contracts</span>
+                                            </div>
+                                        </div>
+
+                                        <!-- Manager Stats -->
+                                        <t t-if="state.isManager">
+                                            <div class="zoho_manager_section">
+                                                <h4>Manager Stats</h4>
+                                                <div class="zoho_manager_stat" t-on-click="openLeaveRequests">
+                                                    <span>Leave Requests</span>
+                                                    <strong><t t-esc="state.employee and state.employee.leaves_to_approve or 0"/></strong>
+                                                </div>
+                                                <div class="zoho_manager_stat" t-on-click="openLeavesToday">
+                                                    <span>Leaves Today</span>
+                                                    <strong><t t-esc="state.employee and state.employee.leaves_today or 0"/></strong>
+                                                </div>
+                                                <div class="zoho_manager_stat" t-on-click="openJobApplications">
+                                                    <span>Job Applications</span>
+                                                    <strong><t t-esc="state.employee and state.employee.job_applications or 0"/></strong>
+                                                </div>
+                                            </div>
+                                        </t>
+                                    </div>
+                                </div>
+
+                                <!-- Main Content -->
+                                <div class="zoho_main_content">
+                                    <div class="zoho_content_header">
+                                        <div class="zoho_greeting">
+                                            <h2><t t-if="state.employee" t-esc="state.employee.name"/></h2>
+                                            <p>Have a productive day!</p>
+                                        </div>
+                                    </div>
+
+                                    <!-- Content Tabs -->
+                                    <div class="zoho_content_tabs">
+                                        <t t-foreach="contentTabs" t-as="tab" t-key="tab.id">
+                                            <div class="zoho_content_tab"
+                                                 t-att-class="{ active: state.activeTab === tab.id }"
+                                                 t-on-click="() => this.onTabClick(tab.id)"
+                                                 t-esc="tab.label"/>
+                                        </t>
+                                    </div>
+
+                                    <!-- Tab Panels -->
+                                    <div class="zoho_tab_panels">
+                                        
+                                        <!-- Activities Tab -->
+                                        <div class="zoho_tab_panel" t-att-class="{ active: state.activeTab === 'activities' }">
+                                            <div class="zoho_stats_grid">
+                                                <div class="zoho_stat_card" t-on-click="openPayslips">
+                                                    <div class="stat_icon">💰</div>
+                                                    <div class="stat_value"><t t-esc="state.employee and state.employee.payslip_count or 0"/></div>
+                                                    <div class="stat_label">Payslips</div>
+                                                </div>
+                                                <div class="zoho_stat_card" t-on-click="openTimesheets">
+                                                    <div class="stat_icon">⏱️</div>
+                                                    <div class="stat_value"><t t-esc="state.employee and state.employee.emp_timesheets or 0"/></div>
+                                                    <div class="stat_label">Timesheets</div>
+                                                </div>
+                                                <div class="zoho_stat_card" t-on-click="openContracts">
+                                                    <div class="stat_icon">📄</div>
+                                                    <div class="stat_value"><t t-esc="state.employee and state.employee.contracts_count or 0"/></div>
+                                                    <div class="stat_label">Contracts</div>
+                                                </div>
+                                                <div class="zoho_stat_card">
+                                                    <div class="stat_icon">📊</div>
+                                                    <div class="stat_value"><t t-esc="state.employee and state.employee.broad_factor or 0"/></div>
+                                                    <div class="stat_label">Broad Factor</div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Personal Info -->
+                                            <div class="zoho_info_card">
+                                                <h4>Personal Information</h4>
+                                                <div class="zoho_info_grid">
+                                                    <div class="zoho_info_item">
+                                                        <label>Experience</label>
+                                                        <p><t t-if="state.employee" t-esc="state.employee.experience or '-'"/></p>
+                                                    </div>
+                                                    <div class="zoho_info_item">
+                                                        <label>Email</label>
+                                                        <p><t t-if="state.employee" t-esc="state.employee.work_email or '-'"/></p>
+                                                    </div>
+                                                    <div class="zoho_info_item">
+                                                        <label>Department</label>
+                                                        <p><t t-if="state.employee and state.employee.department_id" t-esc="state.employee.department_id[1]"/></p>
+                                                    </div>
+                                                    <div class="zoho_info_item">
+                                                        <label>Phone</label>
+                                                        <p><t t-if="state.employee" t-esc="state.employee.mobile_phone or '-'"/></p>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Leave Trend Chart -->
+                                            <div class="zoho_chart_card">
+                                                <h4>My Leave Trend</h4>
+                                                <div class="zoho_chart_container">
+                                                    <canvas id="zohoLeaveChart"/>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Attendance Tab -->
+                                        <div class="zoho_tab_panel" t-att-class="{ active: state.activeTab === 'attendance' }">
+                                            <div class="zoho_section_header">
+                                                <h3>ATTENDANCE</h3>
+                                                <div class="zoho_header_actions">
+                                                    <button class="zoho_view_all_btn" t-on-click="openAllAttendance">View All</button>
+                                                    <button class="zoho_add_btn" t-on-click="addAttendance">+ Add</button>
+                                                </div>
+                                            </div>
+                                            <div class="zoho_table_wrapper">
+                                                <table class="zoho_table">
+                                                    <thead><tr><th>Date</th><th>Sign In</th><th>Sign Out</th><th>Worked Hours</th></tr></thead>
+                                                    <tbody>
+                                                        <t t-foreach="state.attendance" t-as="att" t-key="att.id">
+                                                            <tr class="zoho_clickable_row" t-on-click="() => this.onAttendanceRowClick(att)">
+                                                                <td><t t-esc="att.date"/></td>
+                                                                <td><t t-esc="att.sign_in"/></td>
+                                                                <td><t t-esc="att.sign_out"/></td>
+                                                                <td><t t-esc="att.worked_hours"/></td>
+                                                            </tr>
+                                                        </t>
+                                                        <t t-if="! state.attendance.length">
+                                                            <tr><td colspan="4" class="zoho_empty_row">No attendance records</td></tr>
+                                                        </t>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+
+                                        <!-- Leaves Tab -->
+                                        <div class="zoho_tab_panel" t-att-class="{ active: state.activeTab === 'leaves' }">
+                                            <div class="zoho_section_header">
+                                                <h3>LEAVES</h3>
+                                                <div class="zoho_header_actions">
+                                                    <button class="zoho_view_all_btn" t-on-click="openAllLeaves">View All</button>
+                                                    <button class="zoho_add_btn" t-on-click="addLeave">+ Add</button>
+                                                </div>
+                                            </div>
+                                            <div class="zoho_table_wrapper">
+                                                <table class="zoho_table">
+                                                    <thead><tr><th>From</th><th>To</th><th>Type</th><th>Status</th></tr></thead>
+                                                    <tbody>
+                                                        <t t-foreach="state.leaves" t-as="leave" t-key="leave.id">
+                                                            <tr class="zoho_clickable_row" t-on-click="() => this.onLeaveRowClick(leave)">
+                                                                <td><t t-esc="leave.request_date_from"/></td>
+                                                                <td><t t-esc="leave.request_date_to"/></td>
+                                                                <td><t t-esc="leave.type"/></td>
+                                                                <td><span class="zoho_badge" t-att-style="'background:' + leave.color"><t t-esc="leave.state"/></span></td>
+                                                            </tr>
+                                                        </t>
+                                                        <t t-if="!state.leaves.length">
+                                                            <tr><td colspan="4" class="zoho_empty_row">No leave records</td></tr>
+                                                        </t>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+
+                                        <!-- Expenses Tab -->
+                                        <div class="zoho_tab_panel" t-att-class="{ active: state.activeTab === 'expenses' }">
+                                            <div class="zoho_section_header">
+                                                <h3>EXPENSES</h3>
+                                                <div class="zoho_header_actions">
+                                                    <button class="zoho_view_all_btn" t-on-click="openAllExpenses">View All</button>
+                                                    <button class="zoho_add_btn" t-on-click="addExpense">+ Add</button>
+                                                </div>
+                                            </div>
+                                            <div class="zoho_table_wrapper">
+                                                <table class="zoho_table">
+                                                    <thead><tr><th>Date</th><th>Subject</th><th>Amount</th><th>Status</th></tr></thead>
+                                                    <tbody>
+                                                        <t t-foreach="state.expenses" t-as="exp" t-key="exp.id">
+                                                            <tr class="zoho_clickable_row" t-on-click="() => this.onExpenseRowClick(exp)">
+                                                                <td><t t-esc="exp.date"/></td>
+                                                                <td><t t-esc="exp.name"/></td>
+                                                                <td><t t-esc="exp.total_amount"/></td>
+                                                                <td><span class="zoho_badge" t-att-style="'background:' + exp.color"><t t-esc="exp.state"/></span></td>
+                                                            </tr>
+                                                        </t>
+                                                        <t t-if="!state.expenses.length">
+                                                            <tr><td colspan="4" class="zoho_empty_row">No expense records</td></tr>
+                                                        </t>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+
+                                        <!-- Projects Tab -->
+                                        <div class="zoho_tab_panel" t-att-class="{ active: state.activeTab === 'projects' }">
+                                            <div class="zoho_section_header">
+                                                <h3>PROJECTS</h3>
+                                                <div class="zoho_header_actions">
+                                                    <button class="zoho_view_all_btn" t-on-click="openAllProjects">View All</button>
+                                                    <button class="zoho_add_btn" t-on-click="addProject">+ Add</button>
+                                                </div>
+                                            </div>
+                                            <div class="zoho_table_wrapper">
+                                                <table class="zoho_table">
+                                                    <thead><tr><th>Project</th><th>Task</th><th>Due Date</th><th>Stage</th></tr></thead>
+                                                    <tbody>
+                                                        <t t-foreach="state.projects" t-as="proj" t-key="proj.id">
+                                                            <tr class="zoho_clickable_row" t-on-click="() => this.onProjectRowClick(proj)">
+                                                                <td><t t-esc="proj.project_name"/></td>
+                                                                <td><t t-esc="proj.task_name"/></td>
+                                                                <td><t t-esc="proj.date_deadline"/></td>
+                                                                <td><span class="zoho_badge" style="background:#6c757d;"><t t-esc="proj.stage_name"/></span></td>
+                                                            </tr>
+                                                        </t>
+                                                        <t t-if="! state.projects.length">
+                                                            <tr><td colspan="4" class="zoho_empty_row">No tasks found</td></tr>
+                                                        </t>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+
+                                        <!-- Notifications Tab -->
+                                        <div class="zoho_tab_panel" t-att-class="{ active: state.activeTab === 'notifications' }">
+                                            <div class="zoho_notifications_grid">
+                                                <div class="zoho_notification_card">
+                                                    <h4>🎂 Birthdays</h4>
+                                                    <t t-foreach="state.birthdays" t-as="emp" t-key="emp.id">
+                                                        <div class="zoho_notification_item">
+                                                            <strong><t t-esc="emp.name"/></strong>
+                                                            <span><t t-esc="emp.birthday"/></span>
+                                                        </div>
+                                                    </t>
+                                                    <t t-if="! state.birthdays.length">
+                                                        <div class="zoho_empty_notification">No upcoming birthdays</div>
+                                                    </t>
+                                                </div>
+                                                <div class="zoho_notification_card">
+                                                    <h4>📅 Events</h4>
+                                                    <t t-foreach="state.events" t-as="event" t-key="event_index">
+                                                        <div class="zoho_notification_item">
+                                                            <strong><t t-esc="event[1]"/></strong>
+                                                            <span><t t-esc="event[2]"/></span>
+                                                        </div>
+                                                    </t>
+                                                    <t t-if="! state.events.length">
+                                                        <div class="zoho_empty_notification">No upcoming events</div>
+                                                    </t>
+                                                </div>
+                                                <div class="zoho_notification_card">
+                                                    <h4>📢 Announcements</h4>
+                                                    <t t-foreach="state.announcements" t-as="ann" t-key="ann_index">
+                                                        <div class="zoho_notification_item">
+                                                            <strong><t t-esc="ann.announcement_reason"/></strong>
+                                                        </div>
+                                                    </t>
+                                                    <t t-if="!state.announcements.length">
+                                                        <div class="zoho_empty_notification">No announcements</div>
+                                                    </t>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Manager Tab -->
+                                        <t t-if="state.isManager">
+                                            <div class="zoho_tab_panel" t-att-class="{ active: state.activeTab === 'manager' }">
+                                                <div class="zoho_manager_cards">
+                                                    <div class="zoho_manager_card" t-on-click="openLeaveRequests">
+                                                        <div class="card_icon">📋</div>
+                                                        <div class="card_value"><t t-esc="state.employee and state.employee.leaves_to_approve or 0"/></div>
+                                                        <div class="card_label">Leave Requests</div>
+                                                    </div>
+                                                    <div class="zoho_manager_card" t-on-click="openLeavesToday">
+                                                        <div class="card_icon">📅</div>
+                                                        <div class="card_value"><t t-esc="state.employee and state.employee.leaves_today or 0"/></div>
+                                                        <div class="card_label">Leaves Today</div>
+                                                    </div>
+                                                    <div class="zoho_manager_card">
+                                                        <div class="card_icon">📆</div>
+                                                        <div class="card_value"><t t-esc="state.employee and state.employee.leaves_this_month or 0"/></div>
+                                                        <div class="card_label">This Month</div>
+                                                    </div>
+                                                    <div class="zoho_manager_card">
+                                                        <div class="card_icon">🎁</div>
+                                                        <div class="card_value"><t t-esc="state.employee and state.employee.leaves_alloc_req or 0"/></div>
+                                                        <div class="card_label">Allocations</div>
+                                                    </div>
+                                                    <div class="zoho_manager_card" t-on-click="openJobApplications">
+                                                        <div class="card_icon">👥</div>
+                                                        <div class="card_value"><t t-esc="state.employee and state.employee.job_applications or 0"/></div>
+                                                        <div class="card_label">Applications</div>
+                                                    </div>
+                                                </div>
+
+                                                <!-- Department Chart -->
+                                                <div class="zoho_chart_card" style="margin-top: 24px;">
+                                                    <h4>Department Distribution</h4>
+                                                    <div class="zoho_chart_container">
+                                                        <canvas id="zohoDeptChart"/>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </t>
+                                    </div>
+                                </div>
+                            </div>
+                        </t>
+
+                        <!-- TEAM VIEW -->
+                        <t t-if="state.currentView === 'team'">
+                            <div class="zoho_team_view">
+                                <div class="zoho_view_header">
+                                    <h2>Team Overview</h2>
+                                    <p>View and manage your team members</p>
+                                </div>
+                                <div class="zoho_team_cards">
+                                    <div class="zoho_team_card" t-on-click="openAllEmployees">
+                                        <div class="team_card_icon">👥</div>
+                                        <h4>All Employees</h4>
+                                        <p>View all team members</p>
+                                    </div>
+                                    <div class="zoho_team_card" t-on-click="openDepartments">
+                                        <div class="team_card_icon">🏢</div>
+                                        <h4>Departments</h4>
+                                        <p>Manage departments</p>
+                                    </div>
+                                    <div class="zoho_team_card" t-on-click="openOrgChart">
+                                        <div class="team_card_icon">📊</div>
+                                        <h4>Org Chart</h4>
+                                        <p>View organization structure</p>
+                                    </div>
+                                    <div class="zoho_team_card" t-on-click="openLeaveRequests">
+                                        <div class="team_card_icon">📋</div>
+                                        <h4>Leave Requests</h4>
+                                        <p>Pending approvals</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </t>
+
+                        <!-- ORGANIZATION VIEW -->
+                        <t t-if="state.currentView === 'organization'">
+                            <div class="zoho_org_view">
+                                <div class="zoho_view_header">
+                                    <h2>Organization</h2>
+                                    <p>Company-wide information and settings</p>
+                                </div>
+                                <div class="zoho_org_cards">
+                                    <div class="zoho_org_card" t-on-click="openDepartments">
+                                        <div class="org_card_icon">🏢</div>
+                                        <h4>Departments</h4>
+                                    </div>
+                                    <div class="zoho_org_card" t-on-click="openOrgChart">
+                                        <div class="org_card_icon">📊</div>
+                                        <h4>Organization Chart</h4>
+                                    </div>
+                                    <div class="zoho_org_card" t-on-click="openJobApplications">
+                                        <div class="org_card_icon">🎯</div>
+                                        <h4>Recruitment</h4>
+                                    </div>
+                                </div>
+                            </div>
+                        </t>
+
+                        <!-- OPERATIONS VIEW -->
+                        <t t-if="state.currentView === 'operations'">
+                            <div class="zoho_operations_view">
+                                <div class="zoho_apps_search">
+                                    <input type="text" placeholder="Search menus..." t-on-input="onSearchInput" t-att-value="state.searchQuery"/>
+                                </div>
+                                <div class="zoho_apps_grid">
+                                    <t t-foreach="filteredApps" t-as="app" t-key="app.id">
+                                        <div class="zoho_app_item" t-on-click="() => this.onAppClick(app)">
+                                            <div class="zoho_app_icon">
+                                                <t t-if="getAppIcon(app)">
+                                                    <img t-att-src="getAppIcon(app)"/>
+                                                </t>
+                                                <t t-else="">📦</t>
+                                            </div>
+                                            <span class="zoho_app_name"><t t-esc="app.name"/></span>
+                                        </div>
+                                    </t>
+                                    <t t-if="!filteredApps.length">
+                                        <div class="zoho_empty_apps">
+                                            <div class="zoho_empty_icon">📦</div>
+                                            <p>No apps found</p>
+                                        </div>
+                                    </t>
+                                </div>
+                            </div>
+                        </t>
+
+                        <!-- PROFILE VIEW -->
+                        <t t-if="state.currentView === 'profile'">
+                            <div class="zoho_profile_view">
+                                <div class="zoho_profile_card">
+                                    <div class="zoho_profile_header">
+                                        <div class="zoho_profile_avatar">
+                                            <t t-if="state.employee and state.employee.image_1920">
+                                                <img t-att-src="'data:image/png;base64,' + state.employee.image_1920"/>
+                                            </t>
+                                            <t t-else="">👤</t>
+                                        </div>
+                                        <h2><t t-if="state.employee" t-esc="state.employee.name"/></h2>
+                                        <p><t t-if="state.employee and state.employee.job_id" t-esc="state.employee.job_id[1]"/></p>
+                                    </div>
+                                    <div class="zoho_profile_body">
+                                        <div class="zoho_profile_grid">
+                                            <div class="zoho_profile_item">
+                                                <label>Email</label>
+                                                <p><t t-if="state.employee" t-esc="state.employee.work_email or '-'"/></p>
+                                            </div>
+                                            <div class="zoho_profile_item">
+                                                <label>Phone</label>
+                                                <p><t t-if="state.employee" t-esc="state.employee.mobile_phone or '-'"/></p>
+                                            </div>
+                                            <div class="zoho_profile_item">
+                                                <label>Department</label>
+                                                <p><t t-if="state.employee and state.employee.department_id" t-esc="state.employee.department_id[1]"/></p>
+                                            </div>
+                                            <div class="zoho_profile_item">
+                                                <label>Experience</label>
+                                                <p><t t-if="state.employee" t-esc="state.employee.experience or '-'"/></p>
+                                            </div>
+                                        </div>
+                                        <div class="zoho_profile_actions">
+                                            <button class="zoho_primary_btn" t-on-click="openProfile">Edit Profile</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </t>
+
+                    </div>
+                </div>
+            </t>
+        </div>
+    </t>
+</templates>
