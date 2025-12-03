@@ -6,6 +6,7 @@
             <t t-if="state.loading">
                 <div class="zoho_loading">
                     <div class="zoho_loading_spinner"/>
+                    <p class="zoho_loading_text">Loading Dashboard...</p>
                 </div>
             </t>
 
@@ -14,7 +15,7 @@
                 <div class="zoho_sidebar">
                     <t t-foreach="sidebarItems" t-as="item" t-key="item.id">
                         <div class="zoho_sidebar_item"
-                             t-att-class="{ active: state.currentView === item.id }"
+                             t-att-class="{ active: state.currentView === item.id or (item.id === 'operations' and state.currentView === 'embedded') }"
                              t-on-click="() => this.onSidebarClick(item)">
                             <span class="zoho_sidebar_icon" t-esc="item.icon"/>
                             <span class="zoho_sidebar_text" t-esc="item.label"/>
@@ -24,28 +25,102 @@
 
                 <!-- Main Wrapper -->
                 <div class="zoho_main_wrapper">
-                    
                     <!-- Top Navigation Bar -->
                     <div class="zoho_top_nav">
-                        <div class="zoho_top_nav_tabs">
-                            <t t-foreach="mainTabs" t-as="tab" t-key="tab.id">
-                                <div class="zoho_top_nav_tab"
-                                     t-att-class="{ active: state.activeMainTab === tab.id }"
-                                     t-on-click="() => this.onMainTabClick(tab.id)"
-                                     t-esc="tab.label"/>
+                        <div class="zoho_top_nav_left">
+                            <div class="zoho_top_nav_tabs">
+                                <t t-foreach="mainTabs" t-as="tab" t-key="tab.id">
+                                    <div class="zoho_top_nav_tab"
+                                         t-att-class="{ active: state.activeMainTab === tab.id and ! state.showEmbeddedView }"
+                                         t-on-click="() => this.onMainTabClick(tab.id)"
+                                         t-esc="tab.label"/>
+                                </t>
+                            </div>
+                            
+                            <!-- Breadcrumb for embedded view -->
+                            <t t-if="state.showEmbeddedView and state.embeddedBreadcrumb.length">
+                                <div class="zoho_breadcrumb">
+                                    <span class="breadcrumb_separator">|</span>
+                                    <t t-foreach="state.embeddedBreadcrumb" t-as="crumb" t-key="crumb_index">
+                                        <span class="breadcrumb_item" 
+                                              t-att-class="{ active: crumb_index === state.embeddedBreadcrumb.length - 1 }"
+                                              t-on-click="() => this.onBreadcrumbClick(crumb, crumb_index)"
+                                              t-esc="crumb.name"/>
+                                        <span t-if="crumb_index &lt; state.embeddedBreadcrumb.length - 1" class="breadcrumb_arrow">›</span>
+                                    </t>
+                                </div>
                             </t>
                         </div>
-                        <div class="zoho_top_nav_actions">
+                        
+                        <div class="zoho_top_nav_right">
+                            <div class="zoho_current_time">
+                                <span class="time_display" t-esc="formattedCurrentTime"/>
+                                <span class="date_display" t-esc="formattedCurrentDate"/>
+                            </div>
                             <button class="zoho_quick_add_btn" t-on-click="addLeave">+ Quick Add</button>
                         </div>
                     </div>
 
+                    <!-- Sub-Menu Bar for Embedded Apps -->
+                    <t t-if="state.showEmbeddedView and state.embeddedMenus.length">
+                        <div class="zoho_submenu_bar">
+                            <t t-foreach="state.embeddedMenus" t-as="menu" t-key="menu.id">
+                                <div class="zoho_submenu_item"
+                                     t-att-class="{ active: state.embeddedCurrentMenu and state.embeddedCurrentMenu.id === menu.id, has_children: menu.children and menu.children.length }"
+                                     t-on-click="() => this.onEmbeddedMenuClick(menu)">
+                                    <span t-esc="menu.name"/>
+                                    <span t-if="menu.children and menu.children.length" class="submenu_arrow">▼</span>
+                                    
+                                    <!-- Dropdown for children -->
+                                    <t t-if="menu.children and menu.children.length">
+                                        <div class="zoho_submenu_dropdown">
+                                            <t t-foreach="menu.children" t-as="child" t-key="child.id">
+                                                <div class="zoho_submenu_dropdown_item"
+                                                     t-on-click.stop="() => this.onEmbeddedMenuClick(child)"
+                                                     t-esc="child.name"/>
+                                            </t>
+                                        </div>
+                                    </t>
+                                </div>
+                            </t>
+                            
+                            <!-- Close button -->
+                            <div class="zoho_submenu_close" t-on-click="closeEmbeddedView">
+                                ✕ Close
+                            </div>
+                        </div>
+                    </t>
+
                     <div class="zoho_content_area">
                         
-                        <!-- HOME / MY SPACE VIEW -->
+                        <!-- EMBEDDED VIEW -->
+                        <t t-if="state.currentView === 'embedded' and state.showEmbeddedView">
+                            <div class="zoho_embedded_wrapper">
+                                <!-- Embedded View Header -->
+                                <div class="zoho_embedded_header">
+                                    <div class="embedded_title">
+                                        <h2 t-if="state.embeddedAction" t-esc="state.embeddedAction.name"/>
+                                        <h2 t-else="" t-esc="state.embeddedApp?.name"/>
+                                    </div>
+                                    <div class="embedded_actions">
+                                        <button class="zoho_refresh_btn" t-on-click="() => this.renderEmbeddedView()">↻ Refresh</button>
+                                    </div>
+                                </div>
+                                
+                                <!-- Embedded View Container - Views render here -->
+                                <div class="zoho_embedded_container" t-ref="embeddedView">
+                                    <div class="zoho_embedded_loading">
+                                        <div class="zoho_loading_spinner"/>
+                                        <p>Loading view...</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </t>
+
+                        <!-- HOME VIEW -->
                         <t t-if="state.currentView === 'home'">
                             <div class="zoho_home_layout">
-                                <!-- Employee Sidebar -->
+                                <!-- Left: Employee Card -->
                                 <div class="zoho_employee_sidebar">
                                     <div class="zoho_employee_card">
                                         <div class="zoho_employee_image">
@@ -55,6 +130,7 @@
                                             <t t-else="">
                                                 <span class="zoho_avatar_placeholder">👤</span>
                                             </t>
+                                            <div class="zoho_online_badge" t-att-class="{ online: state.employee and state.employee.attendance_state === 'checked_in' }"/>
                                         </div>
                                         
                                         <h3 class="zoho_employee_name">
@@ -101,6 +177,24 @@
                                             </div>
                                         </div>
 
+                                        <!-- Leave Balances -->
+                                        <t t-if="state.leaveBalances.length">
+                                            <div class="zoho_leave_balances">
+                                                <h4>Leave Balance</h4>
+                                                <t t-foreach="state.leaveBalances" t-as="balance" t-key="balance.id">
+                                                    <div class="zoho_leave_balance_item">
+                                                        <div class="balance_header">
+                                                            <span class="balance_type" t-esc="balance.type"/>
+                                                            <span class="balance_count"><t t-esc="balance.remaining"/> / <t t-esc="balance.allocated"/></span>
+                                                        </div>
+                                                        <div class="balance_progress">
+                                                            <div class="balance_progress_bar" t-attf-style="width: {{ (balance.remaining / balance.allocated) * 100 }}%"/>
+                                                        </div>
+                                                    </div>
+                                                </t>
+                                            </div>
+                                        </t>
+
                                         <!-- Manager Stats -->
                                         <t t-if="state.isManager">
                                             <div class="zoho_manager_section">
@@ -120,14 +214,51 @@
                                             </div>
                                         </t>
                                     </div>
+
+                                    <!-- Team Members Widget -->
+                                    <t t-if="state.teamMembers.length">
+                                        <div class="zoho_team_widget">
+                                            <h4>Team Members</h4>
+                                            <div class="zoho_team_list">
+                                                <t t-foreach="state.teamMembers" t-as="member" t-key="member.id">
+                                                    <div class="zoho_team_member" t-on-click="() => this.openTeamMember(member)">
+                                                        <div class="member_avatar">
+                                                            <t t-if="member.image">
+                                                                <img t-att-src="'data:image/png;base64,' + member.image"/>
+                                                            </t>
+                                                            <t t-else="">👤</t>
+                                                            <span class="member_status" t-att-class="{ online: member.status === 'checked_in' }"/>
+                                                        </div>
+                                                        <div class="member_info">
+                                                            <span class="member_name" t-esc="member.name"/>
+                                                            <span class="member_job" t-esc="member.job"/>
+                                                        </div>
+                                                    </div>
+                                                </t>
+                                            </div>
+                                        </div>
+                                    </t>
                                 </div>
 
-                                <!-- Main Content -->
+                                <!-- Right: Main Content -->
                                 <div class="zoho_main_content">
+                                    <!-- Announcement Banner -->
+                                    <t t-if="currentAnnouncement">
+                                        <div class="zoho_announcement_banner">
+                                            <span class="announcement_icon">📢</span>
+                                            <span class="announcement_text" t-esc="currentAnnouncement.announcement_reason"/>
+                                            <div class="announcement_dots">
+                                                <t t-foreach="state.announcements" t-as="ann" t-key="ann_index">
+                                                    <span class="announcement_dot" t-att-class="{ active: ann_index === state.currentAnnouncementIndex }"/>
+                                                </t>
+                                            </div>
+                                        </div>
+                                    </t>
+
                                     <div class="zoho_content_header">
                                         <div class="zoho_greeting">
-                                            <h2><t t-if="state.employee" t-esc="state.employee.name"/></h2>
-                                            <p>Have a productive day!</p>
+                                            <h2>Welcome back, <t t-if="state.employee" t-esc="state.employee.name.split(' ')[0]"/>!  👋</h2>
+                                            <p>Here's what's happening today</p>
                                         </div>
                                     </div>
 
@@ -143,7 +274,6 @@
 
                                     <!-- Tab Panels -->
                                     <div class="zoho_tab_panels">
-                                        
                                         <!-- Activities Tab -->
                                         <div class="zoho_tab_panel" t-att-class="{ active: state.activeTab === 'activities' }">
                                             <div class="zoho_stats_grid">
@@ -169,27 +299,49 @@
                                                 </div>
                                             </div>
 
-                                            <!-- Personal Info -->
-                                            <div class="zoho_info_card">
-                                                <h4>Personal Information</h4>
-                                                <div class="zoho_info_grid">
-                                                    <div class="zoho_info_item">
-                                                        <label>Experience</label>
-                                                        <p><t t-if="state.employee" t-esc="state.employee.experience or '-'"/></p>
-                                                    </div>
-                                                    <div class="zoho_info_item">
-                                                        <label>Email</label>
-                                                        <p><t t-if="state.employee" t-esc="state.employee.work_email or '-'"/></p>
-                                                    </div>
-                                                    <div class="zoho_info_item">
-                                                        <label>Department</label>
-                                                        <p><t t-if="state.employee and state.employee.department_id" t-esc="state.employee.department_id[1]"/></p>
-                                                    </div>
-                                                    <div class="zoho_info_item">
-                                                        <label>Phone</label>
-                                                        <p><t t-if="state.employee" t-esc="state.employee.mobile_phone or '-'"/></p>
+                                            <!-- Info + Skills Row -->
+                                            <div class="zoho_row">
+                                                <div class="zoho_info_card">
+                                                    <h4>Personal Information</h4>
+                                                    <div class="zoho_info_grid">
+                                                        <div class="zoho_info_item">
+                                                            <label>Experience</label>
+                                                            <p><t t-if="state.employee" t-esc="state.employee.experience or '-'"/></p>
+                                                        </div>
+                                                        <div class="zoho_info_item">
+                                                            <label>Email</label>
+                                                            <p><t t-if="state.employee" t-esc="state.employee.work_email or '-'"/></p>
+                                                        </div>
+                                                        <div class="zoho_info_item">
+                                                            <label>Department</label>
+                                                            <p><t t-if="state.employee and state.employee.department_id" t-esc="state.employee.department_id[1]"/></p>
+                                                        </div>
+                                                        <div class="zoho_info_item">
+                                                            <label>Phone</label>
+                                                            <p><t t-if="state.employee" t-esc="state.employee.mobile_phone or '-'"/></p>
+                                                        </div>
                                                     </div>
                                                 </div>
+
+                                                <!-- Skills Widget -->
+                                                <t t-if="state.skills.length">
+                                                    <div class="zoho_skills_card">
+                                                        <h4>My Skills</h4>
+                                                        <div class="zoho_skills_list">
+                                                            <t t-foreach="state.skills" t-as="skill" t-key="skill.id">
+                                                                <div class="zoho_skill_item">
+                                                                    <div class="skill_header">
+                                                                        <span class="skill_name" t-esc="skill.name"/>
+                                                                        <span class="skill_percent"><t t-esc="skill.progress"/>%</span>
+                                                                    </div>
+                                                                    <div class="skill_progress">
+                                                                        <div class="skill_progress_bar" t-attf-style="width: {{ skill.progress }}%"/>
+                                                                    </div>
+                                                                </div>
+                                                            </t>
+                                                        </div>
+                                                    </div>
+                                                </t>
                                             </div>
 
                                             <!-- Leave Trend Chart -->
@@ -239,6 +391,20 @@
                                                     <button class="zoho_add_btn" t-on-click="addLeave">+ Add</button>
                                                 </div>
                                             </div>
+
+                                            <!-- Leave Balance Cards -->
+                                            <t t-if="state.leaveBalances.length">
+                                                <div class="zoho_leave_balance_cards">
+                                                    <t t-foreach="state.leaveBalances" t-as="balance" t-key="balance.id">
+                                                        <div class="zoho_balance_card">
+                                                            <div class="balance_card_value" t-esc="balance.remaining"/>
+                                                            <div class="balance_card_label" t-esc="balance.type"/>
+                                                            <div class="balance_card_sub">of <t t-esc="balance.allocated"/> days</div>
+                                                        </div>
+                                                    </t>
+                                                </div>
+                                            </t>
+
                                             <div class="zoho_table_wrapper">
                                                 <table class="zoho_table">
                                                     <thead><tr><th>From</th><th>To</th><th>Type</th><th>Status</th></tr></thead>
@@ -340,7 +506,7 @@
                                                             <span><t t-esc="event[2]"/></span>
                                                         </div>
                                                     </t>
-                                                    <t t-if="! state.events.length">
+                                                    <t t-if="!state.events.length">
                                                         <div class="zoho_empty_notification">No upcoming events</div>
                                                     </t>
                                                 </div>
@@ -388,8 +554,6 @@
                                                         <div class="card_label">Applications</div>
                                                     </div>
                                                 </div>
-
-                                                <!-- Department Chart -->
                                                 <div class="zoho_chart_card" style="margin-top: 24px;">
                                                     <h4>Department Distribution</h4>
                                                     <div class="zoho_chart_container">
@@ -432,6 +596,28 @@
                                         <p>Pending approvals</p>
                                     </div>
                                 </div>
+
+                                <!-- Team Members Grid -->
+                                <t t-if="state.teamMembers.length">
+                                    <div class="zoho_team_members_grid">
+                                        <h3>My Team</h3>
+                                        <div class="team_grid">
+                                            <t t-foreach="state.teamMembers" t-as="member" t-key="member.id">
+                                                <div class="team_member_card" t-on-click="() => this.openTeamMember(member)">
+                                                    <div class="member_card_avatar">
+                                                        <t t-if="member.image">
+                                                            <img t-att-src="'data:image/png;base64,' + member.image"/>
+                                                        </t>
+                                                        <t t-else="">👤</t>
+                                                        <span class="member_card_status" t-att-class="{ online: member.status === 'checked_in' }"/>
+                                                    </div>
+                                                    <div class="member_card_name" t-esc="member.name"/>
+                                                    <div class="member_card_job" t-esc="member.job"/>
+                                                </div>
+                                            </t>
+                                        </div>
+                                    </div>
+                                </t>
                             </div>
                         </t>
 
@@ -520,6 +706,24 @@
                                                 <p><t t-if="state.employee" t-esc="state.employee.experience or '-'"/></p>
                                             </div>
                                         </div>
+
+                                        <!-- Skills in Profile -->
+                                        <t t-if="state.skills.length">
+                                            <div class="zoho_profile_skills">
+                                                <h4>Skills</h4>
+                                                <div class="profile_skills_grid">
+                                                    <t t-foreach="state.skills" t-as="skill" t-key="skill.id">
+                                                        <div class="profile_skill_item">
+                                                            <span class="profile_skill_name" t-esc="skill.name"/>
+                                                            <div class="profile_skill_bar">
+                                                                <div class="profile_skill_fill" t-attf-style="width: {{ skill.progress }}%"/>
+                                                            </div>
+                                                        </div>
+                                                    </t>
+                                                </div>
+                                            </div>
+                                        </t>
+
                                         <div class="zoho_profile_actions">
                                             <button class="zoho_primary_btn" t-on-click="openProfile">Edit Profile</button>
                                         </div>
@@ -529,6 +733,16 @@
                         </t>
 
                     </div>
+                </div>
+
+                <!-- Floating Quick Actions -->
+                <div class="zoho_quick_actions_fab">
+                    <div class="fab_menu">
+                        <div class="fab_item" t-on-click="addLeave" title="New Leave">📅</div>
+                        <div class="fab_item" t-on-click="addExpense" title="New Expense">💳</div>
+                        <div class="fab_item" t-on-click="addProject" title="New Task">📋</div>
+                    </div>
+                    <div class="fab_main">+</div>
                 </div>
             </t>
         </div>

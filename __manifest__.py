@@ -20,18 +20,20 @@
         'project',
         'event',
     ],
+    'external_dependencies': {
+        'python': ['pandas'],
+    },
     'data': [
         'security/ir.model.access.csv',
         'views/dashboard_views.xml',
     ],
     'assets': {
         'web.assets_backend': [
-            # Chart.js CDN
-            ('include', 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js'),
             # Dashboard files
             'hrms_dashboard/static/src/css/dashboard.css',
             'hrms_dashboard/static/src/js/dashboard.js',
             'hrms_dashboard/static/src/xml/dashboard.xml',
+            'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.js',
         ],
     },
     'images': ['static/description/banner.jpg'],
