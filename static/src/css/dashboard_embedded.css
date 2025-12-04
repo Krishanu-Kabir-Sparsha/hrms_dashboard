@@ -1,0 +1,120 @@
+/* ============ EMBEDDED VIEW STYLES ============ */
+
+.zoho_embedded_view_wrapper {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+    background: #fff;
+}
+
+.zoho_embedded_loading_overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.95);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    z-index: 100;
+}
+
+.zoho_embedded_loading_overlay p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 14px;
+}
+
+.zoho_embedded_view_container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* Override Odoo view styles inside container */
+.zoho_embedded_view_container .o_view_controller {
+    height: 100% !important;
+    display: flex;
+    flex-direction: column;
+}
+
+.zoho_embedded_view_container .o_control_panel {
+    flex-shrink: 0;
+    background: #f8f9fa;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.zoho_embedded_view_container .o_content {
+    flex: 1;
+    overflow: auto ! important;
+}
+
+.zoho_embedded_view_container .o_list_view,
+.zoho_embedded_view_container .o_kanban_view,
+.zoho_embedded_view_container .o_form_view {
+    height: 100%;
+}
+
+.zoho_embedded_view_container .o_list_renderer {
+    overflow: auto;
+}
+
+/* Breadcrumb home button */
+.breadcrumb_home {
+    font-size: 14px;
+    color: var(--primary-color);
+    cursor: pointer;
+    padding: 6px 12px;
+    border-radius: var(--radius-sm);
+    transition: var(--transition);
+    font-weight: 500;
+}
+
+.breadcrumb_home:hover {
+    background: rgba(26, 115, 232, 0.1);
+}
+
+/* Back button styling */
+.zoho_close_btn {
+    padding: 8px 16px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    cursor: pointer;
+    transition: var(--transition);
+    border: none;
+    background: rgba(220, 53, 69, 0.1);
+    color: var(--danger-color);
+    font-weight: 500;
+}
+
+.zoho_close_btn:hover {
+    background: rgba(220, 53, 69, 0.2);
+}
+
+.zoho_embedded_header .zoho_close_btn {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.zoho_embedded_header .zoho_close_btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+/* Make embedded views responsive */
+@media (max-width: 768px) {
+    .zoho_embedded_view_container .o_control_panel {
+        flex-wrap: wrap;
+    }
+    
+    .zoho_embedded_view_container .o_cp_buttons,
+    .zoho_embedded_view_container .o_cp_searchview {
+        width: 100%;
+    }
+}

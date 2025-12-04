@@ -1,25 +1,41 @@
 /** @odoo-module **/
 
 import { registry } from "@web/core/registry";
-import { Component, useState, onMounted, onWillStart, onWillUnmount, useRef, xml } from "@odoo/owl";
+import { Component, useState, onMounted, onWillStart, onWillUnmount, useRef, useSubEnv, xml } from "@odoo/owl";
 import { useService } from "@web/core/utils/hooks";
 import { _t } from "@web/core/l10n/translation";
 import { loadJS } from "@web/core/assets";
+import { View } from "@web/views/view";
 
-export class HrDashboard extends Component {
-    static template = "hrms_dashboard.Dashboard";
+export class ZohoDashboard extends Component {
+    static template = "hrms_dashboard.ZohoDashboard";
     static props = ["*"];
+    static components = { View };
 
     setup() {
+        // Core Services
         this.actionService = useService("action");
         this.orm = useService("orm");
-        this.effect = useService("effect");
         this.notification = useService("notification");
         this.viewService = useService("view");
-        
-        // Reference for embedded view container
+        this.user = useService("user");
+
+        // Refs
         this.embeddedViewRef = useRef("embeddedView");
 
+        // Embedded State
+        this.embeddedState = useState({
+            isEmbeddedMode: false,
+            currentApp: null,
+            currentMenus: [],
+            breadcrumbs: [],
+            loading: false,
+            // View props for rendering
+            viewProps: null,
+            showView: false,
+        });
+
+        // Local State
         this.state = useState({
             loading: true,
             isManager: false,
@@ -46,26 +62,18 @@ export class HrDashboard extends Component {
             skills: [],
             currentAnnouncementIndex: 0,
             currentTime: new Date(),
-            attendanceCalendar: [],
-            // New: Embedded view state
-            embeddedApp: null,
-            embeddedMenus: [],
-            embeddedAction: null,
-            embeddedActionXml: null,
-            showEmbeddedView: false,
-            embeddedBreadcrumb: [],
-            embeddedCurrentMenu: null,
         });
 
+        // Navigation items
         this.sidebarItems = [
-            { id: "home", icon: "🏠", label: "Home" },
-            { id: "profile", icon: "👤", label: "Profile" },
-            { id: "leave", icon: "📅", label: "Leave" },
-            { id: "attendance", icon: "⏰", label: "Attendance" },
-            { id: "timesheet", icon: "⏱️", label: "Timesheets" },
-            { id: "payroll", icon: "💰", label: "Payroll" },
-            { id: "expense", icon: "💳", label: "Expenses" },
-            { id: "operations", icon: "⚙️", label: "Operations" },
+            { id: "home", icon: "🏠", label: "Home", action: "home" },
+            { id: "profile", icon: "👤", label: "Profile", action: "profile" },
+            { id: "leave", icon: "📅", label: "Leave", model: "hr.leave" },
+            { id: "attendance", icon: "⏰", label: "Attendance", model: "hr.attendance" },
+            { id: "timesheet", icon: "⏱️", label: "Timesheets", model: "account.analytic.line" },
+            { id: "payroll", icon: "💰", label: "Payroll", model: "hr.payslip" },
+            { id: "expense", icon: "💳", label: "Expenses", model: "hr.expense" },
+            { id: "operations", icon: "⚙️", label: "Operations", action: "operations" },
         ];
 
         this.contentTabs = [
@@ -83,6 +91,7 @@ export class HrDashboard extends Component {
             { id: "organization", label: "Organization" },
         ];
 
+        // Lifecycle
         onWillStart(async () => {
             await this.loadChartLibrary();
             await this.loadInitialData();
@@ -93,51 +102,258 @@ export class HrDashboard extends Component {
             this.initializeTimer();
             this.startClockTimer();
             this.startAnnouncementSlider();
+            this.hideOdooNavbar();
             if (this.state.chartLoaded) {
                 this.renderCharts();
             }
         });
 
         onWillUnmount(() => {
-            if (this.timerInterval) clearInterval(this.timerInterval);
-            if (this.clockInterval) clearInterval(this.clockInterval);
-            if (this.announcementInterval) clearInterval(this.announcementInterval);
-            this.destroyEmbeddedView();
+            this.cleanup();
         });
+    }
+
+    // ==================== UTILITY METHODS ====================
+
+    cleanup() {
+        if (this.timerInterval) clearInterval(this.timerInterval);
+        if (this.clockInterval) clearInterval(this.clockInterval);
+        if (this.announcementInterval) clearInterval(this.announcementInterval);
+        this.showOdooNavbar();
+    }
+
+    hideOdooNavbar() {
+        const navbar = document.querySelector('.o_main_navbar');
+        if (navbar) navbar.style.display = 'none';
+        
+        const actionManager = document.querySelector('.o_action_manager');
+        if (actionManager) actionManager.style.paddingTop = '0';
+    }
+
+    showOdooNavbar() {
+        const navbar = document.querySelector('.o_main_navbar');
+        if (navbar) navbar.style.display = '';
     }
 
     // ==================== EMBEDDED VIEW METHODS ====================
 
-    async openAppEmbedded(app) {
-        if (!app) return;
+    async openEmbeddedView(resModel, title, domain = [], viewType = "list", context = {}) {
+        this.embeddedState.loading = true;
+        this.embeddedState.isEmbeddedMode = true;
+        this.embeddedState.currentApp = { name: title };
+        this.embeddedState.breadcrumbs = [{ name: title, type: 'model' }];
+        this.state.currentView = "embedded";
 
-        this.state.loading = true;
-        
         try {
-            // Get menu structure for this app
-            const menuData = await this.orm.call("ir.ui.menu", "get_menu_with_all_children", [app.id]);
-            
-            this.state.embeddedApp = app;
-            this.state.embeddedMenus = menuData?.children || [];
-            this.state.showEmbeddedView = true;
-            this.state.currentView = "embedded";
-            this.state.embeddedBreadcrumb = [{ id: app.id, name: app.name }];
+            // Get view info
+            const viewInfo = await this.viewService.loadViews({
+                resModel: resModel,
+                views: [[false, viewType], [false, "form"]],
+                context: { ...this.user.context, ...context },
+            });
 
-            // Load first action if available
+            // Build view props
+            this.embeddedState.viewProps = {
+                type: viewType,
+                resModel: resModel,
+                domain: domain,
+                context: { ...this.user.context, ...context },
+                loadIrFilters: true,
+                loadActionMenus: true,
+                // Important: This allows clicking rows to open form view within our container
+                selectRecord: async (resId) => {
+                    await this.openEmbeddedFormView(resModel, resId, title);
+                },
+                createRecord: async () => {
+                    await this.openEmbeddedFormView(resModel, null, "New " + title);
+                },
+            };
+
+            this.embeddedState.showView = true;
+            this.embeddedState.currentMenus = [];
+
+        } catch (error) {
+            console.error("Failed to open embedded view:", error);
+            this.notification.add(_t("Failed to open view"), { type: "warning" });
+            this.embeddedState.showView = false;
+        } finally {
+            this.embeddedState.loading = false;
+        }
+    }
+
+    async openEmbeddedFormView(resModel, resId, title) {
+        this.embeddedState.loading = true;
+
+        try {
+            // Update breadcrumbs
+            if (this.embeddedState.breadcrumbs.length === 1) {
+                this.embeddedState.breadcrumbs.push({ name: resId ?  `Edit ${title}` : `New ${title}`, type: 'form' });
+            } else {
+                this.embeddedState.breadcrumbs[1] = { name: resId ? `Edit ${title}` : `New ${title}`, type: 'form' };
+            }
+
+            this.embeddedState.viewProps = {
+                type: "form",
+                resModel: resModel,
+                resId: resId || false,
+                context: { ...this.user.context },
+                mode: resId ? "edit" : "edit",
+                onSave: async () => {
+                    // Go back to list view after save
+                    await this.goBackToList();
+                },
+                onDiscard: async () => {
+                    await this.goBackToList();
+                },
+            };
+
+            this.embeddedState.showView = true;
+
+        } catch (error) {
+            console.error("Failed to open form view:", error);
+        } finally {
+            this.embeddedState.loading = false;
+        }
+    }
+
+    async goBackToList() {
+        // Get the first breadcrumb (list view)
+        const listBreadcrumb = this.embeddedState.breadcrumbs[0];
+        if (listBreadcrumb) {
+            // Re-open the list view
+            const appName = this.embeddedState.currentApp?.name || "";
+            
+            // Determine the model from the app name
+            const modelMap = {
+                "My Leaves": "hr.leave",
+                "My Attendance": "hr.attendance",
+                "My Payslips": "hr.payslip",
+                "My Expenses": "hr.expense",
+                "My Timesheets": "account.analytic.line",
+                "Employees": "hr.employee",
+                "Departments": "hr.department",
+                "My Tasks": "project.task",
+                "Leave Requests": "hr.leave",
+                "Job Applications": "hr.applicant",
+                "My Contracts": "hr.contract",
+            };
+
+            const resModel = modelMap[appName];
+            if (resModel) {
+                let domain = [];
+                if (this.state.employee?.id) {
+                    if (["hr.leave", "hr.attendance", "hr.payslip", "hr.expense"].includes(resModel)) {
+                        domain = [["employee_id", "=", this.state.employee.id]];
+                    }
+                }
+                await this.openEmbeddedView(resModel, appName, domain);
+            }
+        }
+    }
+
+    async openEmbeddedApp(app) {
+        if (! app) return;
+
+        this.embeddedState.loading = true;
+
+        try {
+            // Get menu structure
+            const menuData = await this.orm.call("ir.ui.menu", "get_menu_with_all_children", [app.id]);
+
+            this.embeddedState.isEmbeddedMode = true;
+            this.embeddedState.currentApp = app;
+            this.embeddedState.currentMenus = menuData?.children || [];
+            this.embeddedState.breadcrumbs = [{ id: app.id, name: app.name, type: 'app' }];
+            this.state.currentView = "embedded";
+
+            // Find first action
+            let actionData = null;
+            
             if (menuData?.action_id) {
-                await this.loadEmbeddedAction(menuData.action_id, app.name);
-            } else if (this.state.embeddedMenus.length > 0) {
-                // Find first menu with action
-                const firstMenuWithAction = this.findFirstMenuWithAction(this.state.embeddedMenus);
-                if (firstMenuWithAction) {
-                    await this.onEmbeddedMenuClick(firstMenuWithAction);
+                actionData = await this.getActionData(menuData.action_id);
+            } else if (menuData?.children?.length) {
+                const firstMenu = this.findFirstMenuWithAction(menuData.children);
+                if (firstMenu) {
+                    actionData = await this.getActionData(firstMenu.action_id);
+                    this.embeddedState.breadcrumbs.push({
+                        id: firstMenu.id,
+                        name: firstMenu.name,
+                        type: 'menu'
+                    });
+                }
+            }
+
+            if (actionData) {
+                await this.loadActionIntoView(actionData);
+            }
+
+        } catch (error) {
+            console.error("Failed to open app:", error);
+            this.notification.add(_t("Failed to open ") + app.name, { type: "warning" });
+        } finally {
+            this.embeddedState.loading = false;
+        }
+    }
+
+    async getActionData(actionId) {
+        try {
+            const action = await this.orm.call("ir.actions.act_window", "read", [[actionId]]);
+            if (action && action.length) {
+                return action[0];
+            }
+        } catch (error) {
+            console.error("Failed to get action data:", error);
+        }
+        return null;
+    }
+
+    async loadActionIntoView(actionData) {
+        if (!actionData || !actionData.res_model) return;
+
+        const viewMode = actionData.view_mode?.split(',')[0] || 'list';
+        const domain = actionData.domain ?  eval(actionData.domain) : [];
+        const context = actionData.context ? eval(actionData.context) : {};
+
+        await this.openEmbeddedView(
+            actionData.res_model,
+            actionData.name || this.embeddedState.currentApp?.name,
+            domain,
+            viewMode,
+            context
+        );
+    }
+
+    async onEmbeddedMenuClick(menu) {
+        if (! menu) return;
+
+        this.embeddedState.loading = true;
+
+        try {
+            // Update breadcrumbs
+            const appCrumb = this.embeddedState.breadcrumbs[0];
+            this.embeddedState.breadcrumbs = [
+                appCrumb,
+                { id: menu.id, name: menu.name, type: 'menu' }
+            ];
+
+            if (menu.action_id) {
+                const actionData = await this.getActionData(menu.action_id);
+                if (actionData) {
+                    await this.loadActionIntoView(actionData);
+                }
+            } else if (menu.children?.length) {
+                const firstChild = this.findFirstMenuWithAction(menu.children);
+                if (firstChild) {
+                    const actionData = await this.getActionData(firstChild.action_id);
+                    if (actionData) {
+                        await this.loadActionIntoView(actionData);
+                    }
                 }
             }
         } catch (error) {
-            console.error("Failed to open embedded app:", error);
-            this.notification.add(_t("Failed to open ") + app.name, { type: "warning" });
+            console.error("Failed to load menu:", error);
         } finally {
-            this.state.loading = false;
+            this.embeddedState.loading = false;
         }
     }
 
@@ -152,196 +368,41 @@ export class HrDashboard extends Component {
         return null;
     }
 
-    async onEmbeddedMenuClick(menu) {
-        if (! menu) return;
-
-        this.state.embeddedCurrentMenu = menu;
-
-        // Update breadcrumb
-        const appBreadcrumb = this.state.embeddedBreadcrumb[0];
-        this.state.embeddedBreadcrumb = [appBreadcrumb, { id: menu.id, name: menu.name }];
-
-        if (menu.action_id) {
-            await this.loadEmbeddedAction(menu.action_id, menu.name);
-        } else if (menu.children?.length) {
-            // Show submenu
-            this.state.embeddedMenus = menu.children;
-        }
-    }
-
-    async loadEmbeddedAction(actionId, title) {
-        try {
-            // Get action details
-            const actionData = await this.orm.call("ir.actions.act_window", "read", [[actionId], [
-                "name", "res_model", "view_mode", "views", "domain", "context", "target", "search_view_id"
-            ]]);
-
-            if (! actionData || !actionData[0]) {
-                throw new Error("Action not found");
-            }
-
-            const action = actionData[0];
-            
-            this.state.embeddedAction = {
-                id: actionId,
-                name: action.name || title,
-                res_model: action.res_model,
-                view_mode: action.view_mode,
-                views: action.views,
-                domain: action.domain || [],
-                context: action.context || {},
-                search_view_id: action.search_view_id,
-            };
-
-            // Render the embedded view
-            await this.renderEmbeddedView();
-        } catch (error) {
-            console.error("Failed to load embedded action:", error);
-        }
-    }
-
-    async renderEmbeddedView() {
-        const container = this.embeddedViewRef.el;
-        if (!container || !this.state.embeddedAction) return;
-
-        // Clear previous content
-        container.innerHTML = '';
-
-        const action = this.state.embeddedAction;
-        
-        // Determine view type
-        const viewModes = action.view_mode.split(',');
-        const primaryView = viewModes[0].trim();
-
-        // Create action config for Odoo's action manager
-        const actionConfig = {
-            type: "ir.actions.act_window",
-            name: action.name,
-            res_model: action.res_model,
-            view_mode: action.view_mode,
-            views: action.views || [[false, primaryView]],
-            domain: action.domain,
-            context: { ...action.context, embedded: true },
-            target: "inline",
-        };
-
-        try {
-            // Use action service to render in container
-            await this.actionService.doAction(actionConfig, {
-                clearBreadcrumbs: false,
-                onClose: () => {
-                    // Handle view close
-                },
-                additionalContext: {
-                    embedded_dashboard: true,
-                },
-            });
-        } catch (error) {
-            console.error("Failed to render embedded view:", error);
-            // Fallback: Show iframe
-            this.renderIframeView(action);
-        }
-    }
-
-    renderIframeView(action) {
-        const container = this.embeddedViewRef.el;
-        if (!container) return;
-
-        container.innerHTML = '';
-
-        const iframe = document.createElement('iframe');
-        iframe.className = 'zoho_embedded_iframe';
-        iframe.src = `/web#action=${action.id}&model=${action.res_model}&view_type=list`;
-        iframe.style.cssText = 'width:100%;height:100%;border:none;';
-        
-        container.appendChild(iframe);
-    }
-
-    destroyEmbeddedView() {
-        const container = this.embeddedViewRef?.el;
-        if (container) {
-            container.innerHTML = '';
-        }
-    }
-
     closeEmbeddedView() {
-        this.destroyEmbeddedView();
-        this.state.showEmbeddedView = false;
-        this.state.embeddedApp = null;
-        this.state.embeddedMenus = [];
-        this.state.embeddedAction = null;
-        this.state.embeddedBreadcrumb = [];
+        this.embeddedState.isEmbeddedMode = false;
+        this.embeddedState.currentApp = null;
+        this.embeddedState.currentMenus = [];
+        this.embeddedState.breadcrumbs = [];
+        this.embeddedState.viewProps = null;
+        this.embeddedState.showView = false;
         this.state.currentView = "operations";
     }
 
-    async onBreadcrumbClick(crumb, index) {
+    onBreadcrumbClick(crumb, index) {
         if (index === 0) {
-            // Clicked on app - reload app menus
-            await this.openAppEmbedded(this.state.embeddedApp);
+            if (crumb.type === 'app') {
+                this.openEmbeddedApp(this.embeddedState.currentApp);
+            } else if (crumb.type === 'model') {
+                // Re-open the list view
+                this.goBackToList();
+            }
         }
     }
 
-    // ==================== QUICK EMBEDDED VIEWS ====================
-
-    async openEmbeddedLeave() {
-        await this.openQuickEmbedded("hr.leave", "My Leaves", 
-            [["employee_id", "=", this.state.employee?.id || false]]);
-    }
-
-    async openEmbeddedAttendance() {
-        await this.openQuickEmbedded("hr.attendance", "My Attendance",
-            [["employee_id", "=", this.state.employee?.id || false]]);
-    }
-
-    async openEmbeddedTimesheets() {
-        await this.openQuickEmbedded("account.analytic.line", "My Timesheets",
-            [["project_id", "!=", false]]);
-    }
-
-    async openEmbeddedPayroll() {
-        await this.openQuickEmbedded("hr.payslip", "My Payslips",
-            [["employee_id", "=", this.state.employee?.id || false]]);
-    }
-
-    async openEmbeddedExpenses() {
-        await this.openQuickEmbedded("hr.expense", "My Expenses",
-            [["employee_id", "=", this.state.employee?.id || false]]);
-    }
-
-    async openQuickEmbedded(resModel, title, domain = []) {
-        this.state.embeddedApp = { name: title };
-        this.state.showEmbeddedView = true;
-        this.state.currentView = "embedded";
-        this.state.embeddedBreadcrumb = [{ name: title }];
-        this.state.embeddedMenus = [];
-
-        this.state.embeddedAction = {
-            name: title,
-            res_model: resModel,
-            view_mode: "list,form",
-            views: [[false, "list"], [false, "form"]],
-            domain: domain,
-            context: {},
-        };
-
-        await this.renderEmbeddedView();
-    }
-
-    // ==================== PHASE 4: DATA LOADERS ====================
+    // ==================== DATA LOADERS ====================
 
     async loadPhase4Data() {
         await Promise.all([
             this.loadLeaveBalances(),
             this.loadTeamMembers(),
             this.loadSkills(),
-            this.loadAttendanceCalendar(),
         ]);
     }
 
     async loadLeaveBalances() {
         try {
             if (! this.state.employee?.id) return;
-            
+
             const allocations = await this.orm.searchRead(
                 "hr.leave.allocation",
                 [
@@ -354,19 +415,20 @@ export class HrDashboard extends Component {
 
             this.state.leaveBalances = allocations.map(a => ({
                 id: a.id,
-                type: a.holiday_status_id[1],
-                allocated: a.number_of_days,
+                type: a.holiday_status_id ?  a.holiday_status_id[1] : 'Unknown',
+                allocated: a.number_of_days || 0,
                 taken: a.leaves_taken || 0,
-                remaining: a.number_of_days - (a.leaves_taken || 0),
+                remaining: (a.number_of_days || 0) - (a.leaves_taken || 0),
             }));
         } catch (error) {
             console.error("Failed to load leave balances:", error);
+            this.state.leaveBalances = [];
         }
     }
 
     async loadTeamMembers() {
         try {
-            if (! this.state.employee?.department_id) return;
+            if (!this.state.employee?.department_id) return;
 
             const members = await this.orm.searchRead(
                 "hr.employee",
@@ -387,6 +449,7 @@ export class HrDashboard extends Component {
             }));
         } catch (error) {
             console.error("Failed to load team members:", error);
+            this.state.teamMembers = [];
         }
     }
 
@@ -403,43 +466,17 @@ export class HrDashboard extends Component {
 
             this.state.skills = skills.map(s => ({
                 id: s.id,
-                name: s.skill_id[1],
-                type: s.skill_type_id[1],
-                progress: s.level_progress,
+                name: s.skill_id ? s.skill_id[1] : 'Unknown',
+                type: s.skill_type_id ?  s.skill_type_id[1] : '',
+                progress: s.level_progress || 0,
             }));
         } catch (error) {
             console.error("Failed to load skills:", error);
+            this.state.skills = [];
         }
     }
 
-    async loadAttendanceCalendar() {
-        try {
-            if (!this.state.employee?.id) return;
-
-            const today = new Date();
-            const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
-
-            const attendances = await this.orm.searchRead(
-                "hr.attendance",
-                [
-                    ["employee_id", "=", this.state.employee.id],
-                    ["check_in", ">=", thirtyDaysAgo.toISOString()],
-                ],
-                ["check_in", "check_out", "worked_hours"],
-                { order: "check_in desc" }
-            );
-
-            this.state.attendanceCalendar = attendances.map(a => ({
-                date: a.check_in.split("T")[0],
-                hours: a.worked_hours || 0,
-                hasCheckout: !!a.check_out,
-            }));
-        } catch (error) {
-            console.error("Failed to load attendance calendar:", error);
-        }
-    }
-
-    // ==================== CLOCK & TIMERS ====================
+    // ==================== TIMER & CLOCK ====================
 
     startClockTimer() {
         this.clockInterval = setInterval(() => {
@@ -450,7 +487,7 @@ export class HrDashboard extends Component {
     startAnnouncementSlider() {
         if (this.state.announcements.length > 1) {
             this.announcementInterval = setInterval(() => {
-                this.state.currentAnnouncementIndex = 
+                this.state.currentAnnouncementIndex =
                     (this.state.currentAnnouncementIndex + 1) % this.state.announcements.length;
             }, 5000);
         }
@@ -477,7 +514,30 @@ export class HrDashboard extends Component {
         return this.state.announcements[this.state.currentAnnouncementIndex];
     }
 
-    // ==================== CHART & DATA LOADING ====================
+    initializeTimer() {
+        if (this.state.employee?.attendance_state === "checked_in") {
+            this.state.timerRunning = true;
+            this.startTimer();
+        }
+    }
+
+    startTimer() {
+        if (this.timerInterval) clearInterval(this.timerInterval);
+        this.timerInterval = setInterval(() => {
+            if (this.state.timerRunning) {
+                this.state.timerSeconds++;
+            }
+        }, 1000);
+    }
+
+    get formattedTimer() {
+        const hours = Math.floor(this.state.timerSeconds / 3600);
+        const minutes = Math.floor((this.state.timerSeconds % 3600) / 60);
+        const seconds = this.state.timerSeconds % 60;
+        return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+    }
+
+    // ==================== DATA LOADING ====================
 
     async loadChartLibrary() {
         try {
@@ -486,42 +546,58 @@ export class HrDashboard extends Component {
             }
             this.state.chartLoaded = true;
         } catch (error) {
-            console.warn("Chart.js could not be loaded.", error);
+            console.warn("Chart.js could not be loaded:", error);
             this.state.chartLoaded = false;
         }
     }
 
     async loadInitialData() {
         try {
-            this.state.isManager = await this.orm.call("hr.employee", "check_user_group", []);
-
-            const empDetails = await this.orm.call("hr.employee", "get_user_employee_details", []);
-            if (empDetails && empDetails[0]) {
-                this.state.employee = empDetails[0];
-                this.state.attendance = empDetails[0].attendance_lines || [];
-                this.state.leaves = empDetails[0].leave_lines || [];
-                this.state.expenses = empDetails[0].expense_lines || [];
+            try {
+                this.state.isManager = await this.orm.call("hr.employee", "check_user_group", []);
+            } catch (e) {
+                this.state.isManager = false;
             }
 
-            const projects = await this.orm.call("hr.employee", "get_employee_project_tasks", []);
-            this.state.projects = projects || [];
+            try {
+                const empDetails = await this.orm.call("hr.employee", "get_user_employee_details", []);
+                if (empDetails && empDetails[0]) {
+                    this.state.employee = empDetails[0];
+                    this.state.attendance = empDetails[0].attendance_lines || [];
+                    this.state.leaves = empDetails[0].leave_lines || [];
+                    this.state.expenses = empDetails[0].expense_lines || [];
+                }
+            } catch (e) {
+                console.error("Failed to load employee details:", e);
+            }
 
-            const upcoming = await this.orm.call("hr.employee", "get_upcoming", []);
-            if (upcoming) {
-                this.state.birthdays = upcoming.birthday || [];
-                this.state.events = upcoming.event || [];
-                this.state.announcements = upcoming.announcement || [];
+            try {
+                const projects = await this.orm.call("hr.employee", "get_employee_project_tasks", []);
+                this.state.projects = projects || [];
+            } catch (e) {
+                this.state.projects = [];
+            }
+
+            try {
+                const upcoming = await this.orm.call("hr.employee", "get_upcoming", []);
+                if (upcoming) {
+                    this.state.birthdays = upcoming.birthday || [];
+                    this.state.events = upcoming.event || [];
+                    this.state.announcements = upcoming.announcement || [];
+                }
+            } catch (e) {
+                console.error("Failed to load upcoming:", e);
             }
 
             await this.loadChartData();
 
-            if (this.state.isManager) {
+            if (this.state.isManager && ! this.contentTabs.find(t => t.id === 'manager')) {
                 this.contentTabs.push({ id: "manager", label: "Manager View" });
             }
 
             await this.loadApps();
         } catch (error) {
-            console.error("Failed to load data:", error);
+            console.error("Failed to load initial data:", error);
         } finally {
             this.state.loading = false;
         }
@@ -546,6 +622,7 @@ export class HrDashboard extends Component {
             this.state.apps = await this.orm.call("ir.ui.menu", "get_zoho_apps", []);
         } catch (error) {
             console.error("Failed to load apps:", error);
+            this.state.apps = [];
         }
     }
 
@@ -562,7 +639,7 @@ export class HrDashboard extends Component {
     renderLeaveChart() {
         if (typeof Chart === "undefined") return;
         const canvas = document.getElementById("zohoLeaveChart");
-        if (!canvas || !this.state.leaveChartData.length) return;
+        if (! canvas || !this.state.leaveChartData.length) return;
 
         if (this.leaveChartInstance) this.leaveChartInstance.destroy();
 
@@ -604,7 +681,7 @@ export class HrDashboard extends Component {
         try {
             const ctx = canvas.getContext("2d");
             const colors = ["#FF6384", "#36A2EB", "#FFCE56", "#4BC0C0", "#9966FF", "#FF9F40", "#00d4aa", "#667eea"];
-            
+
             this.deptChartInstance = new Chart(ctx, {
                 type: "doughnut",
                 data: {
@@ -625,29 +702,6 @@ export class HrDashboard extends Component {
         }
     }
 
-    initializeTimer() {
-        if (this.state.employee?.attendance_state === "checked_in") {
-            this.state.timerRunning = true;
-            this.startTimer();
-        }
-    }
-
-    startTimer() {
-        if (this.timerInterval) clearInterval(this.timerInterval);
-        this.timerInterval = setInterval(() => {
-            if (this.state.timerRunning) {
-                this.state.timerSeconds++;
-            }
-        }, 1000);
-    }
-
-    get formattedTimer() {
-        const hours = Math.floor(this.state.timerSeconds / 3600);
-        const minutes = Math.floor((this.state.timerSeconds % 3600) / 60);
-        const seconds = this.state.timerSeconds % 60;
-        return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
-    }
-
     get filteredApps() {
         if (!this.state.searchQuery) return this.state.apps;
         const query = this.state.searchQuery.toLowerCase();
@@ -657,38 +711,51 @@ export class HrDashboard extends Component {
     // ==================== NAVIGATION ====================
 
     onMainTabClick(tabId) {
+        if (this.embeddedState.isEmbeddedMode) {
+            this.closeEmbeddedView();
+        }
+
         this.state.activeMainTab = tabId;
-        if (tabId === "myspace") this.state.currentView = "home";
+        if (tabId === "myspace") {
+            this.state.currentView = "home";
+            setTimeout(() => this.renderCharts(), 300);
+        }
         else if (tabId === "team") this.state.currentView = "team";
         else if (tabId === "organization") this.state.currentView = "organization";
     }
 
-    async onSidebarClick(item) {
-        // Close embedded view when switching sidebar
-        if (this.state.showEmbeddedView) {
+    onSidebarClick(item) {
+        if (this.embeddedState.isEmbeddedMode && item.action) {
             this.closeEmbeddedView();
         }
 
-        if (item.id === "home") {
+        if (item.action === "home") {
             this.state.currentView = "home";
             this.state.activeTab = "activities";
             this.state.activeMainTab = "myspace";
             setTimeout(() => this.renderCharts(), 300);
-        } else if (item.id === "operations") {
+        } else if (item.action === "operations") {
+            if (this.embeddedState.isEmbeddedMode) {
+                this.closeEmbeddedView();
+            }
             this.state.currentView = "operations";
-        } else if (item.id === "profile") {
+        } else if (item.action === "profile") {
             this.state.currentView = "profile";
-        } else if (item.id === "leave") {
-            await this.openEmbeddedLeave();
-        } else if (item.id === "attendance") {
-            await this.openEmbeddedAttendance();
-        } else if (item.id === "timesheet") {
-            await this.openEmbeddedTimesheets();
-        } else if (item.id === "payroll") {
-            await this.openEmbeddedPayroll();
-        } else if (item.id === "expense") {
-            await this.openEmbeddedExpenses();
+        } else if (item.model) {
+            this.openSidebarModel(item);
         }
+    }
+
+    openSidebarModel(item) {
+        let domain = [];
+        if (this.state.employee?.id) {
+            if (["hr.leave", "hr.attendance", "hr.payslip", "hr.expense"].includes(item.model)) {
+                domain = [["employee_id", "=", this.state.employee.id]];
+            } else if (item.model === "account.analytic.line") {
+                domain = [["project_id", "!=", false]];
+            }
+        }
+        this.openEmbeddedView(item.model, item.label, domain);
     }
 
     onTabClick(tabId) {
@@ -710,26 +777,21 @@ export class HrDashboard extends Component {
         return null;
     }
 
-    // ==================== APP CLICK - EMBEDDED ====================
+    // ==================== APP CLICK ====================
 
     async onAppClick(app) {
         if (! app) return;
-        const appName = app.name ?  app.name.toLowerCase() : "";
 
-        // Special handling for Settings - still use external
-        if (appName.includes("setting")) {
+        const appName = app.name?.toLowerCase() || "";
+
+        // Special apps that need full page
+        if (appName.includes("setting") || appName === "apps" || appName.includes("discuss")) {
             window.location.href = `/web#menu_id=${app.id}`;
             return;
         }
 
-        // Special handling for Apps module - still use external
-        if (appName === "apps") {
-            window.location.href = `/web#menu_id=${app.id}`;
-            return;
-        }
-
-        // Open embedded for all other apps
-        await this.openAppEmbedded(app);
+        // Open in embedded view
+        await this.openEmbeddedApp(app);
     }
 
     // ==================== CHECK IN/OUT ====================
@@ -743,12 +805,12 @@ export class HrDashboard extends Component {
                 this.state.timerRunning = true;
                 this.state.timerSeconds = 0;
                 this.startTimer();
-                this.effect.add({ message: _t("Successfully Checked In"), type: "rainbow_man" });
+                this.notification.add(_t("Successfully Checked In"), { type: "success" });
             } else {
                 this.state.employee.attendance_state = "checked_out";
                 this.state.timerRunning = false;
                 if (this.timerInterval) clearInterval(this.timerInterval);
-                this.effect.add({ message: _t("Successfully Checked Out"), type: "rainbow_man" });
+                this.notification.add(_t("Successfully Checked Out"), { type: "success" });
             }
 
             await this.refreshEmployeeData();
@@ -759,112 +821,154 @@ export class HrDashboard extends Component {
     }
 
     async refreshEmployeeData() {
-        const empDetails = await this.orm.call("hr.employee", "get_user_employee_details", []);
-        if (empDetails?.[0]) {
-            this.state.employee = empDetails[0];
-            this.state.attendance = empDetails[0].attendance_lines || [];
-            this.state.leaves = empDetails[0].leave_lines || [];
-            this.state.expenses = empDetails[0].expense_lines || [];
+        try {
+            const empDetails = await this.orm.call("hr.employee", "get_user_employee_details", []);
+            if (empDetails?.[0]) {
+                this.state.employee = empDetails[0];
+                this.state.attendance = empDetails[0].attendance_lines || [];
+                this.state.leaves = empDetails[0].leave_lines || [];
+                this.state.expenses = empDetails[0].expense_lines || [];
+            }
+        } catch (e) {
+            console.error("Failed to refresh employee data:", e);
         }
     }
 
-    // ==================== QUICK ACTIONS ====================
+    // ==================== QUICK ACTIONS (MODAL) ====================
 
     async addAttendance() {
         await this.actionService.doAction({
-            name: _t("New Attendance"), type: "ir.actions.act_window",
-            res_model: "hr.attendance", view_mode: "form",
-            views: [[false, "form"]], target: "new",
+            name: _t("New Attendance"),
+            type: "ir.actions.act_window",
+            res_model: "hr.attendance",
+            view_mode: "form",
+            views: [[false, "form"]],
+            target: "new",
             context: { default_employee_id: this.state.employee?.id },
         });
     }
 
     async addLeave() {
         await this.actionService.doAction({
-            name: _t("New Leave Request"), type: "ir.actions.act_window",
-            res_model: "hr.leave", view_mode: "form",
-            views: [[false, "form"]], target: "new",
+            name: _t("New Leave Request"),
+            type: "ir.actions.act_window",
+            res_model: "hr.leave",
+            view_mode: "form",
+            views: [[false, "form"]],
+            target: "new",
             context: { default_employee_id: this.state.employee?.id },
         });
     }
 
     async addExpense() {
         await this.actionService.doAction({
-            name: _t("New Expense"), type: "ir.actions.act_window",
-            res_model: "hr.expense", view_mode: "form",
-            views: [[false, "form"]], target: "new",
+            name: _t("New Expense"),
+            type: "ir.actions.act_window",
+            res_model: "hr.expense",
+            view_mode: "form",
+            views: [[false, "form"]],
+            target: "new",
             context: { default_employee_id: this.state.employee?.id },
         });
     }
 
     async addProject() {
         await this.actionService.doAction({
-            name: _t("New Task"), type: "ir.actions.act_window",
-            res_model: "project.task", view_mode: "form",
-            views: [[false, "form"]], target: "new",
+            name: _t("New Task"),
+            type: "ir.actions.act_window",
+            res_model: "project.task",
+            view_mode: "form",
+            views: [[false, "form"]],
+            target: "new",
         });
     }
 
     // ==================== STATS CLICKS ====================
 
-    async openPayslips() { await this.openEmbeddedPayroll(); }
-    async openTimesheets() { await this.openEmbeddedTimesheets(); }
-    
-    async openContracts() {
-        await this.openQuickEmbedded("hr.contract", "My Contracts",
+    openPayslips() {
+        this.openEmbeddedView("hr.payslip", "My Payslips", 
             [["employee_id", "=", this.state.employee?.id || false]]);
     }
 
-    async openLeaveRequests() {
-        await this.openQuickEmbedded("hr.leave", "Leave Requests to Approve",
+    openTimesheets() {
+        this.openEmbeddedView("account.analytic.line", "My Timesheets", 
+            [["project_id", "!=", false]]);
+    }
+
+    openContracts() {
+        this.openEmbeddedView("hr.contract", "My Contracts", 
+            [["employee_id", "=", this.state.employee?.id || false]]);
+    }
+
+    openLeaveRequests() {
+        this.openEmbeddedView("hr.leave", "Leave Requests", 
             [["state", "in", ["confirm", "validate1"]]]);
     }
 
-    async openLeavesToday() {
+    openLeavesToday() {
         const today = new Date().toISOString().split("T")[0];
-        await this.openQuickEmbedded("hr.leave", "Leaves Today",
+        this.openEmbeddedView("hr.leave", "Leaves Today",
             [["date_from", "<=", today], ["date_to", ">=", today], ["state", "=", "validate"]]);
     }
 
-    async openJobApplications() {
-        await this.openQuickEmbedded("hr.applicant", "Job Applications", []);
+    openJobApplications() {
+        this.openEmbeddedView("hr.applicant", "Job Applications", [], "kanban");
     }
 
     async openProfile() {
         if (this.state.employee?.id) {
             await this.actionService.doAction({
-                name: _t("My Profile"), type: "ir.actions.act_window",
-                res_model: "hr.employee", res_id: this.state.employee.id,
-                view_mode: "form", views: [[false, "form"]], target: "new",
+                name: _t("My Profile"),
+                type: "ir.actions.act_window",
+                res_model: "hr.employee",
+                res_id: this.state.employee.id,
+                view_mode: "form",
+                views: [[false, "form"]],
+                target: "new",
             });
         }
     }
 
-    async openAllAttendance() { await this.openEmbeddedAttendance(); }
-    async openAllLeaves() { await this.openEmbeddedLeave(); }
-    async openAllExpenses() { await this.openEmbeddedExpenses(); }
-    
-    async openAllProjects() {
-        await this.openQuickEmbedded("project.task", "My Tasks", []);
+    openAllAttendance() {
+        this.openEmbeddedView("hr.attendance", "My Attendance", 
+            [["employee_id", "=", this.state.employee?.id || false]]);
     }
 
-    async openAllEmployees() {
-        await this.openQuickEmbedded("hr.employee", "Employees", []);
+    openAllLeaves() {
+        this.openEmbeddedView("hr.leave", "My Leaves", 
+            [["employee_id", "=", this.state.employee?.id || false]]);
     }
 
-    async openDepartments() {
-        await this.openQuickEmbedded("hr.department", "Departments", []);
+    openAllExpenses() {
+        this.openEmbeddedView("hr.expense", "My Expenses", 
+            [["employee_id", "=", this.state.employee?.id || false]]);
     }
 
-    async openOrgChart() {
-        await this.openQuickEmbedded("hr.employee", "Organization", []);
+    openAllProjects() {
+        this.openEmbeddedView("project.task", "My Tasks", [], "kanban");
+    }
+
+    openAllEmployees() {
+        this.openEmbeddedView("hr.employee", "Employees", [], "kanban");
+    }
+
+    openDepartments() {
+        this.openEmbeddedView("hr.department", "Departments", []);
+    }
+
+    openOrgChart() {
+        this.openEmbeddedView("hr.employee", "Organization", [], "kanban");
     }
 
     async openTeamMember(member) {
         await this.actionService.doAction({
-            name: member.name, type: "ir.actions.act_window",
-            res_model: "hr.employee", res_id: member.id,
-            view_mode: "form", views: [[false, "form"]], target: "new",
+            name: member.name,
+            type: "ir.actions.act_window",
+            res_model: "hr.employee",
+            res_id: member.id,
+            view_mode: "form",
+            views: [[false, "form"]],
+            target: "new",
         });
     }
 
@@ -872,35 +976,52 @@ export class HrDashboard extends Component {
 
     async onAttendanceRowClick(att) {
         await this.actionService.doAction({
-            name: _t("Attendance"), type: "ir.actions.act_window",
-            res_model: "hr.attendance", res_id: att.id,
-            view_mode: "form", views: [[false, "form"]], target: "new",
+            name: _t("Attendance"),
+            type: "ir.actions.act_window",
+            res_model: "hr.attendance",
+            res_id: att.id,
+            view_mode: "form",
+            views: [[false, "form"]],
+            target: "new",
         });
     }
 
     async onLeaveRowClick(leave) {
         await this.actionService.doAction({
-            name: _t("Leave Request"), type: "ir.actions.act_window",
-            res_model: "hr.leave", res_id: leave.id,
-            view_mode: "form", views: [[false, "form"]], target: "new",
+            name: _t("Leave Request"),
+            type: "ir.actions.act_window",
+            res_model: "hr.leave",
+            res_id: leave.id,
+            view_mode: "form",
+            views: [[false, "form"]],
+            target: "new",
         });
     }
 
     async onExpenseRowClick(exp) {
         await this.actionService.doAction({
-            name: _t("Expense"), type: "ir.actions.act_window",
-            res_model: "hr.expense", res_id: exp.id,
-            view_mode: "form", views: [[false, "form"]], target: "new",
+            name: _t("Expense"),
+            type: "ir.actions.act_window",
+            res_model: "hr.expense",
+            res_id: exp.id,
+            view_mode: "form",
+            views: [[false, "form"]],
+            target: "new",
         });
     }
 
     async onProjectRowClick(proj) {
         await this.actionService.doAction({
-            name: _t("Task"), type: "ir.actions.act_window",
-            res_model: "project.task", res_id: proj.id,
-            view_mode: "form", views: [[false, "form"]], target: "new",
+            name: _t("Task"),
+            type: "ir.actions.act_window",
+            res_model: "project.task",
+            res_id: proj.id,
+            view_mode: "form",
+            views: [[false, "form"]],
+            target: "new",
         });
     }
 }
 
-registry.category("actions").add("hr_dashboard", HrDashboard);
+// Register the dashboard action
+registry.category("actions").add("hr_dashboard_spa", ZohoDashboard);

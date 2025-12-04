@@ -1,16 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Dashboard Action -->
-    <record id="hr_dashboard_action" model="ir.actions.client">
+    <!-- Dashboard Client Action -->
+    <record id="dashboard_action_spa" model="ir.actions.client">
         <field name="name">Dashboard</field>
-        <field name="tag">hr_dashboard</field>
+        <field name="tag">hr_dashboard_spa</field>
+        <field name="target">fullscreen</field>
     </record>
 
-    <!-- Main Menu -->
-    <menuitem id="hrms_dashboard_menu_root"
-              name="Dashboard"
-              action="hr_dashboard_action"
-              web_icon="hrms_dashboard,static/description/icon.png"
-              sequence="-100"
-              groups="base.group_user"/>
+    <!-- Menu Item -->
+    <menuitem
+        id="menu_dashboard_spa"
+        name="Dashboard"
+        action="dashboard_action_spa"
+        sequence="1"
+        web_icon="hrms_dashboard,static/description/icon.png"/>
 </odoo>
