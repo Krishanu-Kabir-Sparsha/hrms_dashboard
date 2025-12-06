@@ -31,7 +31,6 @@
         'web.assets_backend': [
             # Dashboard files
             'hrms_dashboard/static/src/css/dashboard.css',
-            'hrms_dashboard/static/src/css/dashboard_embedded.css',
             'hrms_dashboard/static/src/js/dashboard.js',
             'hrms_dashboard/static/src/xml/dashboard.xml',
             'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.4/Chart.js',

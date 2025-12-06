@@ -31,7 +31,7 @@
 
                 <!-- Main Content Area -->
                 <div class="zoho_main_wrapper">
-                    <!-- Top Navigation Bar - Always Visible -->
+                    <!-- Top Navigation Bar -->
                     <div class="zoho_top_nav">
                         <div class="zoho_top_nav_left">
                             <!-- Main Tabs (when not embedded) -->
@@ -49,7 +49,7 @@
                             <!-- Breadcrumbs (when embedded) -->
                             <t t-if="embeddedState.isEmbeddedMode">
                                 <div class="zoho_breadcrumbs">
-                                    <span class="breadcrumb_home" t-on-click="closeEmbeddedView">
+                                    <span class="breadcrumb_home" t-on-click="returnToDashboardHome">
                                         🏠 Dashboard
                                     </span>
                                     <span class="breadcrumb_separator">›</span>
@@ -84,7 +84,6 @@
                                     <span t-esc="menu.name"/>
                                     <span t-if="menu.children and menu.children.length" class="submenu_arrow">▼</span>
 
-                                    <!-- Dropdown Children -->
                                     <t t-if="menu.children and menu.children.length">
                                         <div class="zoho_submenu_dropdown">
                                             <t t-foreach="menu.children" t-as="child" t-key="child.id">
@@ -98,7 +97,7 @@
                             </t>
 
                             <div class="zoho_submenu_actions">
-                                <button class="zoho_close_btn" t-on-click="closeEmbeddedView">✕ Back to Dashboard</button>
+                                <button class="zoho_back_btn" t-on-click="returnToDashboardHome">← Back to Dashboard</button>
                             </div>
                         </div>
                     </t>
@@ -106,35 +105,15 @@
                     <!-- Simple Header for Embedded without Menus -->
                     <t t-if="embeddedState.isEmbeddedMode and !embeddedState.currentMenus.length">
                         <div class="zoho_embedded_header">
-                            <h3 t-esc="embeddedState.currentApp?.name or 'View'"/>
+                            <h3 t-esc="embeddedState.viewTitle or 'View'"/>
                             <div class="zoho_embedded_actions">
-                                <button class="zoho_close_btn" t-on-click="closeEmbeddedView">✕ Back to Dashboard</button>
+                                <button class="zoho_back_btn" t-on-click="returnToDashboardHome">← Back to Dashboard</button>
                             </div>
                         </div>
                     </t>
 
                     <!-- Content Area -->
                     <div class="zoho_content_area">
-
-                        <!-- EMBEDDED VIEW MODE - Using View Component -->
-                        <t t-if="embeddedState.isEmbeddedMode and embeddedState.showView">
-                            <div class="zoho_embedded_view_wrapper">
-                                <!-- Loading Overlay -->
-                                <t t-if="embeddedState.loading">
-                                    <div class="zoho_embedded_loading_overlay">
-                                        <div class="zoho_loading_spinner"/>
-                                        <p>Loading view...</p>
-                                    </div>
-                                </t>
-
-                                <!-- Embedded View Container -->
-                                <div class="zoho_embedded_view_container" t-ref="embeddedView">
-                                    <t t-if="embeddedState.viewProps">
-                                        <View t-props="embeddedState.viewProps"/>
-                                    </t>
-                                </div>
-                            </div>
-                        </t>
 
                         <!-- HOME VIEW -->
                         <t t-if="state.currentView === 'home' and !embeddedState.isEmbeddedMode">
@@ -485,7 +464,7 @@
                                             <div class="zoho_section_header">
                                                 <h3>EXPENSE RECORDS</h3>
                                                 <div class="zoho_header_actions">
-                                                    <button class="zoho_view_all_btn" t-on-click="openAllExpenses">View All</button>
+                                                                                                        <button class="zoho_view_all_btn" t-on-click="openAllExpenses">View All</button>
                                                     <button class="zoho_add_btn" t-on-click="addExpense">+ Add</button>
                                                 </div>
                                             </div>
@@ -586,7 +565,7 @@
                                                             <span t-esc="event[2]"/>
                                                         </div>
                                                     </t>
-                                                    <t t-if="!state.events.length">
+                                                    <t t-if="! state.events.length">
                                                         <div class="zoho_empty_notification">No upcoming events</div>
                                                     </t>
                                                 </div>
@@ -748,7 +727,7 @@
                                             <span class="zoho_app_name" t-esc="app.name"/>
                                         </div>
                                     </t>
-                                    <t t-if="!filteredApps.length">
+                                    <t t-if="! filteredApps.length">
                                         <div class="zoho_empty_apps">
                                             <div class="zoho_empty_icon">🔍</div>
                                             <p>No applications found</p>
@@ -815,6 +794,28 @@
                                         </div>
                                     </div>
                                 </div>
+                            </div>
+                        </t>
+
+                        <!-- EMBEDDED VIEW - Shows message about embedded mode -->
+                        <t t-if="state.currentView === 'embedded' and embeddedState.isEmbeddedMode">
+                            <div class="zoho_embedded_info">
+                                <t t-if="embeddedState.loading">
+                                    <div class="zoho_loading">
+                                        <div class="zoho_loading_spinner"/>
+                                        <p>Loading view...</p>
+                                    </div>
+                                </t>
+                                <t t-else="">
+                                    <div class="zoho_embedded_message">
+                                        <div class="embedded_icon">🚀</div>
+                                        <h3>Opening <t t-esc="embeddedState.viewTitle"/></h3>
+                                        <p>The view is loading in Odoo's native interface.</p>
+                                        <button class="zoho_primary_btn" t-on-click="returnToDashboardHome">
+                                            ← Return to Dashboard
+                                        </button>
+                                    </div>
+                                </t>
                             </div>
                         </t>
                     </div>
