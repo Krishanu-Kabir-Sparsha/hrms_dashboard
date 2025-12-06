@@ -1,33 +1,38 @@
 /** @odoo-module **/
 
 import { registry } from "@web/core/registry";
-import { Component, useState, onMounted, onWillStart, onWillUnmount, useRef, useChildSubEnv } from "@odoo/owl";
+import { Component, useState, onMounted, onWillStart, onWillUnmount, useRef, useChildSubEnv, xml } from "@odoo/owl";
 import { useService } from "@web/core/utils/hooks";
 import { _t } from "@web/core/l10n/translation";
 import { loadJS } from "@web/core/assets";
+import { View } from "@web/views/view";
 
 export class ZohoDashboard extends Component {
     static template = "hrms_dashboard.ZohoDashboard";
     static props = ["*"];
+    static components = { View };
 
     setup() {
-        // Core Services - Only use services that are available
+        // Core Services
         this.actionService = useService("action");
         this.orm = useService("orm");
         this.notification = useService("notification");
+        this.view = useService("view");
 
         // Refs
+        this.dashboardWrapperRef = useRef("dashboardWrapper");
         this.embeddedContainerRef = useRef("embeddedContainer");
 
-        // Embedded State
+        // Embedded State - Using View component instead of iframe
         this.embeddedState = useState({
             isEmbeddedMode: false,
             currentApp: null,
             currentMenus: [],
             breadcrumbs: [],
             loading: false,
-            currentActionId: null,
             viewTitle: "",
+            // View props for embedded rendering
+            viewProps: null,
         });
 
         // Local State
@@ -97,7 +102,7 @@ export class ZohoDashboard extends Component {
             this.initializeTimer();
             this.startClockTimer();
             this.startAnnouncementSlider();
-            this.hideOdooNavbar();
+            this.setupPersistentFrame();
             if (this.state.chartLoaded) {
                 this.renderCharts();
             }
@@ -108,21 +113,24 @@ export class ZohoDashboard extends Component {
         });
     }
 
-    // ==================== UTILITY METHODS ====================
+    // ==================== PERSISTENT FRAME SETUP ====================
+
+    setupPersistentFrame() {
+        document.body.classList.add('zoho-dashboard-active');
+        this.hideOdooNavbar();
+    }
 
     cleanup() {
         if (this.timerInterval) clearInterval(this.timerInterval);
         if (this.clockInterval) clearInterval(this.clockInterval);
         if (this.announcementInterval) clearInterval(this.announcementInterval);
+        document.body.classList.remove('zoho-dashboard-active');
         this.showOdooNavbar();
     }
 
     hideOdooNavbar() {
         const navbar = document.querySelector('.o_main_navbar');
         if (navbar) navbar.style.display = 'none';
-
-        const actionManager = document.querySelector('.o_action_manager');
-        if (actionManager) actionManager.style.paddingTop = '0';
     }
 
     showOdooNavbar() {
@@ -130,67 +138,142 @@ export class ZohoDashboard extends Component {
         if (navbar) navbar.style.display = '';
     }
 
-    // ==================== EMBEDDED VIEW METHODS ====================
+    // ==================== EMBEDDED VIEW USING OWL VIEW COMPONENT ====================
 
-    async openEmbeddedView(resModel, title, domain = [], viewType = "list", context = {}) {
+    /**
+     * Load an embedded view using Odoo's View component
+     * This renders the view INSIDE our dashboard without navigation
+     */
+    async loadEmbeddedView(resModel, title, domain = [], viewType = "list", context = {}) {
         this.embeddedState.loading = true;
         this.embeddedState.isEmbeddedMode = true;
+        this.embeddedState.viewTitle = title;
         this.embeddedState.currentApp = { name: title };
         this.embeddedState.breadcrumbs = [{ name: title, type: 'model' }];
-        this.embeddedState.viewTitle = title;
+        this.embeddedState.currentMenus = [];
         this.state.currentView = "embedded";
 
         try {
-            // Create action configuration
-            const action = {
-                type: "ir.actions.act_window",
-                name: title,
-                res_model: resModel,
-                view_mode: `${viewType},form`,
-                views: [[false, viewType], [false, "form"]],
+            // Get the view info for this model
+            const viewId = await this.getViewId(resModel, viewType);
+            
+            // Create view props that will be passed to the View component
+            this.embeddedState.viewProps = {
+                type: viewType,
+                resModel: resModel,
                 domain: domain,
-                context: context,
-                target: "inline",
+                context: { ...this.env.context, ...context },
+                viewId: viewId,
+                // Disable breadcrumb creation inside the embedded view
+                noBreadcrumbs: true,
+                // Allow clicking on records to open form view
+                selectRecord: (resId, options) => this.onEmbeddedRecordSelect(resModel, resId, options),
+                createRecord: () => this.onEmbeddedCreateRecord(resModel),
             };
 
-            // Store for reference
-            this.embeddedState.currentAction = action;
-
-            // Wait for DOM to be ready
-            await new Promise(resolve => setTimeout(resolve, 100));
-
-            // Render the action in our container
-            await this.renderEmbeddedAction(action);
-
         } catch (error) {
-            console.error("Failed to open embedded view:", error);
-            this.notification.add(_t("Failed to open view"), { type: "warning" });
+            console.error("Failed to load embedded view:", error);
+            this.notification.add(_t("Failed to load view: ") + error.message, { type: "warning" });
+            this.closeEmbeddedView();
         } finally {
             this.embeddedState.loading = false;
         }
     }
 
-    async renderEmbeddedAction(action) {
-        const container = this.embeddedContainerRef.el;
-        if (!container) return;
-
-        // Clear container
-        container.innerHTML = '';
-
+    /**
+     * Get view ID for a model and view type
+     */
+    async getViewId(resModel, viewType) {
         try {
-            // Use doAction with inline target to render in our container
-            await this.actionService.doAction(action, {
-                clearBreadcrumbs: true,
-                onClose: () => {
-                    this.closeEmbeddedView();
-                },
-            });
-        } catch (error) {
-            console.error("Failed to render action:", error);
+            const result = await this.orm.call(
+                "ir.ui.view",
+                "search",
+                [[["model", "=", resModel], ["type", "=", viewType]]],
+                { limit: 1 }
+            );
+            return result.length ?  result[0] : false;
+        } catch {
+            return false;
         }
     }
 
-    async openEmbeddedApp(app) {
+    /**
+     * Handle record selection in embedded view
+     */
+    async onEmbeddedRecordSelect(resModel, resId, options) {
+        // Open form view in modal
+        await this.actionService.doAction({
+            type: "ir.actions.act_window",
+            res_model: resModel,
+            res_id: resId,
+            views: [[false, "form"]],
+            target: "new",
+        });
+        // Refresh the embedded view after modal closes
+        this.refreshEmbeddedView();
+    }
+
+    /**
+     * Handle create record in embedded view
+     */
+    async onEmbeddedCreateRecord(resModel) {
+        const context = {};
+        if (this.state.employee?.id) {
+            if (["hr.leave", "hr.attendance", "hr.payslip", "hr.expense"].includes(resModel)) {
+                context.default_employee_id = this.state.employee.id;
+            }
+        }
+        
+        await this.actionService.doAction({
+            type: "ir.actions.act_window",
+            res_model: resModel,
+            views: [[false, "form"]],
+            target: "new",
+            context: context,
+        });
+        // Refresh after creation
+        this.refreshEmbeddedView();
+    }
+
+    /**
+     * Switch view type in embedded mode (list <-> kanban <-> calendar)
+     */
+    async switchEmbeddedViewType(newType) {
+        if (! this.embeddedState.viewProps) return;
+        
+        this.embeddedState.loading = true;
+        const currentProps = this.embeddedState.viewProps;
+        
+        try {
+            const viewId = await this.getViewId(currentProps.resModel, newType);
+            this.embeddedState.viewProps = {
+                ...currentProps,
+                type: newType,
+                viewId: viewId,
+            };
+        } finally {
+            this.embeddedState.loading = false;
+        }
+    }
+
+    /**
+     * Refresh the current embedded view
+     */
+    refreshEmbeddedView() {
+        if (! this.embeddedState.viewProps) return;
+        
+        // Force re-render by briefly clearing and restoring viewProps
+        const currentProps = { ...this.embeddedState.viewProps };
+        this.embeddedState.viewProps = null;
+        
+        setTimeout(() => {
+            this.embeddedState.viewProps = currentProps;
+        }, 50);
+    }
+
+    // ==================== APP EMBEDDING ====================
+
+    async loadEmbeddedApp(app) {
         if (! app) return;
 
         this.embeddedState.loading = true;
@@ -208,7 +291,7 @@ export class ZohoDashboard extends Component {
 
             // Find first action
             let actionId = menuData?.action_id;
-            if (!actionId && menuData?.children?.length) {
+            if (! actionId && menuData?.children?.length) {
                 const firstMenu = this.findFirstMenuWithAction(menuData.children);
                 if (firstMenu) {
                     actionId = firstMenu.action_id;
@@ -221,48 +304,88 @@ export class ZohoDashboard extends Component {
             }
 
             if (actionId) {
-                await this.executeEmbeddedAction(actionId);
+                await this.loadEmbeddedAction(actionId);
+            } else {
+                this.notification.add(_t("No action found for ") + app.name, { type: "warning" });
+                this.closeEmbeddedView();
             }
 
         } catch (error) {
             console.error("Failed to open app:", error);
             this.notification.add(_t("Failed to open ") + app.name, { type: "warning" });
+            this.closeEmbeddedView();
         } finally {
             this.embeddedState.loading = false;
         }
     }
 
-    async executeEmbeddedAction(actionId) {
+    /**
+     * Load an action by ID and render it embedded
+     */
+    async loadEmbeddedAction(actionId) {
         try {
-            await this.actionService.doAction(actionId, {
-                clearBreadcrumbs: true,
-            });
+            // Get action definition
+            const action = await this.orm.call("ir.actions.actions", "read", [[actionId]]);
+            
+            if (!action.length) {
+                throw new Error("Action not found");
+            }
+
+            const actionDef = action[0];
+            
+            // For window actions, extract the view info
+            if (actionDef.type === "ir.actions.act_window") {
+                const windowAction = await this.orm.call(
+                    "ir.actions.act_window",
+                    "read",
+                    [[actionId]],
+                    { fields: ["res_model", "domain", "context", "view_mode", "views", "view_id"] }
+                );
+
+                if (windowAction.length) {
+                    const wa = windowAction[0];
+                    const viewMode = wa.view_mode?.split(",")[0] || "list";
+                    let domain = [];
+                    
+                    try {
+                        if (wa.domain && typeof wa.domain === "string") {
+                            domain = JSON.parse(wa.domain.replace(/'/g, '"'));
+                        } else if (Array.isArray(wa.domain)) {
+                            domain = wa.domain;
+                        }
+                    } catch {}
+
+                    await this.loadEmbeddedView(wa.res_model, this.embeddedState.viewTitle, domain, viewMode);
+                }
+            }
         } catch (error) {
-            console.error("Failed to execute action:", error);
+            console.error("Failed to load action:", error);
+            throw error;
         }
     }
 
     async onEmbeddedMenuClick(menu) {
-        if (! menu) return;
+        if (!menu) return;
 
         this.embeddedState.loading = true;
 
         try {
-            // Update breadcrumbs
             const appCrumb = this.embeddedState.breadcrumbs[0];
             this.embeddedState.breadcrumbs = [
                 appCrumb,
                 { id: menu.id, name: menu.name, type: 'menu' }
             ];
+            this.embeddedState.viewTitle = menu.name;
 
             if (menu.action_id) {
-                await this.executeEmbeddedAction(menu.action_id);
+                await this.loadEmbeddedAction(menu.action_id);
             } else if (menu.children?.length) {
                 const firstChild = this.findFirstMenuWithAction(menu.children);
                 if (firstChild) {
-                    await this.executeEmbeddedAction(firstChild.action_id);
+                    await this.loadEmbeddedAction(firstChild.action_id);
                 }
             }
+
         } catch (error) {
             console.error("Failed to load menu:", error);
         } finally {
@@ -287,33 +410,16 @@ export class ZohoDashboard extends Component {
         this.embeddedState.currentMenus = [];
         this.embeddedState.breadcrumbs = [];
         this.embeddedState.viewTitle = "";
-        this.state.currentView = "operations";
-
-        // Restore to dashboard
-        this.actionService.doAction("hrms_dashboard.dashboard_action_spa", {
-            clearBreadcrumbs: true,
-        });
-    }
-
-    returnToDashboardHome() {
-        this.embeddedState.isEmbeddedMode = false;
-        this.embeddedState.currentApp = null;
-        this.embeddedState.currentMenus = [];
-        this.embeddedState.breadcrumbs = [];
+        this.embeddedState.viewProps = null;
         this.state.currentView = "home";
         this.state.activeMainTab = "myspace";
-
-        // Restore to dashboard
-        this.actionService.doAction("hrms_dashboard.dashboard_action_spa", {
-            clearBreadcrumbs: true,
-        });
+        
+        setTimeout(() => this.renderCharts(), 300);
     }
 
     onBreadcrumbClick(crumb, index) {
-        if (index === 0) {
-            if (crumb.type === 'app') {
-                this.openEmbeddedApp(this.embeddedState.currentApp);
-            }
+        if (index === 0 && crumb.type === 'app') {
+            this.loadEmbeddedApp(this.embeddedState.currentApp);
         }
     }
 
@@ -349,7 +455,6 @@ export class ZohoDashboard extends Component {
                 remaining: (a.number_of_days || 0) - (a.leaves_taken || 0),
             }));
         } catch (error) {
-            console.error("Failed to load leave balances:", error);
             this.state.leaveBalances = [];
         }
     }
@@ -376,7 +481,6 @@ export class ZohoDashboard extends Component {
                 status: m.attendance_state,
             }));
         } catch (error) {
-            console.error("Failed to load team members:", error);
             this.state.teamMembers = [];
         }
     }
@@ -399,7 +503,6 @@ export class ZohoDashboard extends Component {
                 progress: s.level_progress || 0,
             }));
         } catch (error) {
-            console.error("Failed to load skills:", error);
             this.state.skills = [];
         }
     }
@@ -474,7 +577,6 @@ export class ZohoDashboard extends Component {
             }
             this.state.chartLoaded = true;
         } catch (error) {
-            console.warn("Chart.js could not be loaded:", error);
             this.state.chartLoaded = false;
         }
     }
@@ -549,7 +651,6 @@ export class ZohoDashboard extends Component {
         try {
             this.state.apps = await this.orm.call("ir.ui.menu", "get_zoho_apps", []);
         } catch (error) {
-            console.error("Failed to load apps:", error);
             this.state.apps = [];
         }
     }
@@ -567,7 +668,7 @@ export class ZohoDashboard extends Component {
     renderLeaveChart() {
         if (typeof Chart === "undefined") return;
         const canvas = document.getElementById("zohoLeaveChart");
-        if (!canvas || !this.state.leaveChartData.length) return;
+        if (! canvas || !this.state.leaveChartData.length) return;
 
         if (this.leaveChartInstance) this.leaveChartInstance.destroy();
 
@@ -595,7 +696,7 @@ export class ZohoDashboard extends Component {
                 },
             });
         } catch (error) {
-            console.error("Failed to render leave chart:", error);
+            console.error("Failed to render chart:", error);
         }
     }
 
@@ -608,7 +709,7 @@ export class ZohoDashboard extends Component {
 
         try {
             const ctx = canvas.getContext("2d");
-            const colors = ["#FF6384", "#36A2EB", "#FFCE56", "#4BC0C0", "#9966FF", "#FF9F40", "#00d4aa", "#667eea"];
+            const colors = ["#FF6384", "#36A2EB", "#FFCE56", "#4BC0C0", "#9966FF", "#FF9F40"];
 
             this.deptChartInstance = new Chart(ctx, {
                 type: "doughnut",
@@ -626,7 +727,7 @@ export class ZohoDashboard extends Component {
                 },
             });
         } catch (error) {
-            console.error("Failed to render dept chart:", error);
+            console.error("Failed to render chart:", error);
         }
     }
 
@@ -640,8 +741,7 @@ export class ZohoDashboard extends Component {
 
     onMainTabClick(tabId) {
         if (this.embeddedState.isEmbeddedMode) {
-            this.returnToDashboardHome();
-            return;
+            this.closeEmbeddedView();
         }
 
         this.state.activeMainTab = tabId;
@@ -654,22 +754,21 @@ export class ZohoDashboard extends Component {
     }
 
     onSidebarClick(item) {
-        if (this.embeddedState.isEmbeddedMode && item.action) {
-            this.embeddedState.isEmbeddedMode = false;
-            this.embeddedState.currentApp = null;
-            this.embeddedState.currentMenus = [];
-            this.embeddedState.breadcrumbs = [];
-        }
-
         if (item.action === "home") {
-            this.returnToDashboardHome();
+            this.closeEmbeddedView();
+            this.state.currentView = "home";
+            this.state.activeTab = "activities";
+            this.state.activeMainTab = "myspace";
+            setTimeout(() => this.renderCharts(), 300);
         } else if (item.action === "operations") {
             if (this.embeddedState.isEmbeddedMode) {
-                this.returnToDashboardHome();
+                this.closeEmbeddedView();
             }
             this.state.currentView = "operations";
-            this.state.activeMainTab = "myspace";
         } else if (item.action === "profile") {
+            if (this.embeddedState.isEmbeddedMode) {
+                this.closeEmbeddedView();
+            }
             this.state.currentView = "profile";
         } else if (item.model) {
             this.openSidebarModel(item);
@@ -685,7 +784,7 @@ export class ZohoDashboard extends Component {
                 domain = [["project_id", "!=", false]];
             }
         }
-        this.openEmbeddedView(item.model, item.title || item.label, domain);
+        this.loadEmbeddedView(item.model, item.title || item.label, domain);
     }
 
     onTabClick(tabId) {
@@ -710,18 +809,18 @@ export class ZohoDashboard extends Component {
     // ==================== APP CLICK ====================
 
     async onAppClick(app) {
-        if (! app) return;
+        if (!app) return;
 
         const appName = app.name?.toLowerCase() || "";
 
         // Special apps that need full page navigation
-        if (appName.includes("setting") || appName === "apps" || appName.includes("discuss")) {
+        if (appName.includes("setting") || appName === "apps") {
             window.location.href = `/web#menu_id=${app.id}`;
             return;
         }
 
-        // Open in embedded view
-        await this.openEmbeddedApp(app);
+        // Open in embedded mode using View component
+        await this.loadEmbeddedApp(app);
     }
 
     // ==================== CHECK IN/OUT ====================
@@ -745,7 +844,6 @@ export class ZohoDashboard extends Component {
 
             await this.refreshEmployeeData();
         } catch (error) {
-            console.error("Check in/out failed:", error);
             this.notification.add(_t("Check in/out failed"), { type: "danger" });
         }
     }
@@ -760,11 +858,11 @@ export class ZohoDashboard extends Component {
                 this.state.expenses = empDetails[0].expense_lines || [];
             }
         } catch (e) {
-            console.error("Failed to refresh employee data:", e);
+            console.error("Failed to refresh:", e);
         }
     }
 
-    // ==================== QUICK ACTIONS (MODAL) ====================
+    // ==================== QUICK ACTIONS ====================
 
     async addAttendance() {
         await this.actionService.doAction({
@@ -813,36 +911,36 @@ export class ZohoDashboard extends Component {
         });
     }
 
-    // ==================== STATS CLICKS ====================
+    // ==================== STAT CARD CLICKS ====================
 
     openPayslips() {
-        this.openEmbeddedView("hr.payslip", "My Payslips",
+        this.loadEmbeddedView("hr.payslip", "My Payslips",
             [["employee_id", "=", this.state.employee?.id || false]]);
     }
 
     openTimesheets() {
-        this.openEmbeddedView("account.analytic.line", "My Timesheets",
+        this.loadEmbeddedView("account.analytic.line", "My Timesheets",
             [["project_id", "!=", false]]);
     }
 
     openContracts() {
-        this.openEmbeddedView("hr.contract", "My Contracts",
+        this.loadEmbeddedView("hr.contract", "My Contracts",
             [["employee_id", "=", this.state.employee?.id || false]]);
     }
 
     openLeaveRequests() {
-        this.openEmbeddedView("hr.leave", "Leave Requests",
+        this.loadEmbeddedView("hr.leave", "Leave Requests",
             [["state", "in", ["confirm", "validate1"]]]);
     }
 
     openLeavesToday() {
         const today = new Date().toISOString().split("T")[0];
-        this.openEmbeddedView("hr.leave", "Leaves Today",
+        this.loadEmbeddedView("hr.leave", "Leaves Today",
             [["date_from", "<=", today], ["date_to", ">=", today], ["state", "=", "validate"]]);
     }
 
     openJobApplications() {
-        this.openEmbeddedView("hr.applicant", "Job Applications", [], "kanban");
+        this.loadEmbeddedView("hr.applicant", "Job Applications", [], "kanban");
     }
 
     async openProfile() {
@@ -860,34 +958,34 @@ export class ZohoDashboard extends Component {
     }
 
     openAllAttendance() {
-        this.openEmbeddedView("hr.attendance", "My Attendance",
+        this.loadEmbeddedView("hr.attendance", "My Attendance",
             [["employee_id", "=", this.state.employee?.id || false]]);
     }
 
     openAllLeaves() {
-        this.openEmbeddedView("hr.leave", "My Leaves",
+        this.loadEmbeddedView("hr.leave", "My Leaves",
             [["employee_id", "=", this.state.employee?.id || false]]);
     }
 
     openAllExpenses() {
-        this.openEmbeddedView("hr.expense", "My Expenses",
+        this.loadEmbeddedView("hr.expense", "My Expenses",
             [["employee_id", "=", this.state.employee?.id || false]]);
     }
 
     openAllProjects() {
-        this.openEmbeddedView("project.task", "My Tasks", [], "kanban");
+        this.loadEmbeddedView("project.task", "My Tasks", [], "kanban");
     }
 
     openAllEmployees() {
-        this.openEmbeddedView("hr.employee", "Employees", [], "kanban");
+        this.loadEmbeddedView("hr.employee", "Employees", [], "kanban");
     }
 
     openDepartments() {
-        this.openEmbeddedView("hr.department", "Departments", []);
+        this.loadEmbeddedView("hr.department", "Departments", []);
     }
 
     openOrgChart() {
-        this.openEmbeddedView("hr.employee", "Organization", [], "kanban");
+        this.loadEmbeddedView("hr.employee", "Organization", [], "kanban");
     }
 
     async openTeamMember(member) {
@@ -902,7 +1000,7 @@ export class ZohoDashboard extends Component {
         });
     }
 
-    // ==================== TABLE ROW CLICKS ====================
+    // ==================== ROW CLICKS ====================
 
     async onAttendanceRowClick(att) {
         await this.actionService.doAction({
