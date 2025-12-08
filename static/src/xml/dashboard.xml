@@ -127,14 +127,25 @@
                                         <p>Loading view...</p>
                                     </div>
                                 </t>
+                                <t t-elif="embeddedState.errorMessage">
+                                    <div class="embedded_error">
+                                        <div class="error_icon">⚠️</div>
+                                        <p t-esc="embeddedState.errorMessage"/>
+                                        <div class="error_actions">
+                                            <button class="btn_outline" t-on-click="refreshEmbeddedView">Try Again</button>
+                                            <button class="btn_primary" t-on-click="closeEmbeddedView">Return to Dashboard</button>
+                                        </div>
+                                    </div>
+                                </t>
                                 <t t-elif="embeddedState.viewProps">
-                                    <div class="embedded_view_wrapper">
+                                    <div class="embedded_view_wrapper" t-key="embeddedState.viewKey">
                                         <View t-props="embeddedState.viewProps"/>
                                     </div>
                                 </t>
                                 <t t-else="">
                                     <div class="embedded_error">
-                                        <p>Unable to load view</p>
+                                        <div class="error_icon">📭</div>
+                                        <p>No view available</p>
                                         <button class="btn_primary" t-on-click="closeEmbeddedView">Return to Dashboard</button>
                                     </div>
                                 </t>

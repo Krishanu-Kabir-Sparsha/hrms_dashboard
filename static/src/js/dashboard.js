@@ -1,7 +1,7 @@
 /** @odoo-module **/
 
 import { registry } from "@web/core/registry";
-import { Component, useState, onMounted, onWillStart, onWillUnmount, useRef, useChildSubEnv, xml } from "@odoo/owl";
+import { Component, useState, onMounted, onWillStart, onWillUnmount, useRef } from "@odoo/owl";
 import { useService } from "@web/core/utils/hooks";
 import { _t } from "@web/core/l10n/translation";
 import { loadJS } from "@web/core/assets";
@@ -13,17 +13,20 @@ export class ZohoDashboard extends Component {
     static components = { View };
 
     setup() {
-        // Core Services
+        // Core Services - Only use services that are available
         this.actionService = useService("action");
         this.orm = useService("orm");
         this.notification = useService("notification");
-        this.view = useService("view");
+        
+        // Note: "user" service is NOT available in client actions
+        // We'll get user info from the session or ORM calls instead
+        this.userId = null;
+        this.userContext = {};
 
         // Refs
         this.dashboardWrapperRef = useRef("dashboardWrapper");
-        this.embeddedContainerRef = useRef("embeddedContainer");
 
-        // Embedded State - Using View component instead of iframe
+        // Embedded State
         this.embeddedState = useState({
             isEmbeddedMode: false,
             currentApp: null,
@@ -31,8 +34,15 @@ export class ZohoDashboard extends Component {
             breadcrumbs: [],
             loading: false,
             viewTitle: "",
-            // View props for embedded rendering
+            currentViewType: "list",
+            currentResModel: null,
+            currentResId: false,
+            currentDomain: [],
+            currentContext: {},
+            availableViewTypes: [],
             viewProps: null,
+            viewKey: 0,
+            errorMessage: null,
         });
 
         // Local State
@@ -93,6 +103,7 @@ export class ZohoDashboard extends Component {
 
         // Lifecycle
         onWillStart(async () => {
+            await this.loadUserInfo();
             await this.loadChartLibrary();
             await this.loadInitialData();
             await this.loadPhase4Data();
@@ -111,6 +122,33 @@ export class ZohoDashboard extends Component {
         onWillUnmount(() => {
             this.cleanup();
         });
+    }
+
+    // ==================== USER INFO ====================
+    
+    /**
+     * Load user information from ORM since user service is not available
+     */
+    async loadUserInfo() {
+        try {
+            // Get current user ID from session
+            const result = await this.orm.call("res.users", "search_read", [
+                [["id", "=", (await this.orm.call("res.users", "search", [[]], { limit: 1 }))[0] || 1]],
+                ["id", "name", "login"]
+            ], { limit: 1 });
+            
+            if (result && result.length > 0) {
+                this.userId = result[0].id;
+            }
+        } catch (e) {
+            // Fallback - try to get from session info
+            try {
+                const sessionInfo = await this.orm.call("ir.http", "session_info", []);
+                this.userId = sessionInfo?.uid || 1;
+            } catch (e2) {
+                this.userId = 1;
+            }
+        }
     }
 
     // ==================== PERSISTENT FRAME SETUP ====================
@@ -138,149 +176,413 @@ export class ZohoDashboard extends Component {
         if (navbar) navbar.style.display = '';
     }
 
-    // ==================== EMBEDDED VIEW USING OWL VIEW COMPONENT ====================
+    // ==================== DYNAMIC EMBEDDED VIEW SYSTEM ====================
 
     /**
-     * Load an embedded view using Odoo's View component
-     * This renders the view INSIDE our dashboard without navigation
+     * Main entry point for loading any embedded view dynamically
      */
     async loadEmbeddedView(resModel, title, domain = [], viewType = "list", context = {}) {
         this.embeddedState.loading = true;
+        this.embeddedState.errorMessage = null;
         this.embeddedState.isEmbeddedMode = true;
         this.embeddedState.viewTitle = title;
-        this.embeddedState.currentApp = { name: title };
         this.embeddedState.breadcrumbs = [{ name: title, type: 'model' }];
-        this.embeddedState.currentMenus = [];
+        this.embeddedState.currentResModel = resModel;
+        this.embeddedState.currentResId = false;
+        this.embeddedState.currentDomain = domain;
+        this.embeddedState.currentViewType = viewType;
+        this.embeddedState.currentContext = context;
         this.state.currentView = "embedded";
 
         try {
-            // Get the view info for this model
-            const viewId = await this.getViewId(resModel, viewType);
-            
-            // Create view props that will be passed to the View component
-            this.embeddedState.viewProps = {
-                type: viewType,
-                resModel: resModel,
-                domain: domain,
-                context: { ...this.env.context, ...context },
-                viewId: viewId,
-                // Disable breadcrumb creation inside the embedded view
-                noBreadcrumbs: true,
-                // Allow clicking on records to open form view
-                selectRecord: (resId, options) => this.onEmbeddedRecordSelect(resModel, resId, options),
-                createRecord: () => this.onEmbeddedCreateRecord(resModel),
-            };
+            // Load menus for this model dynamically
+            const menuInfo = await this.loadMenusForModel(resModel);
+            if (menuInfo.rootMenu) {
+                this.embeddedState.currentApp = {
+                    id: menuInfo.rootMenu.id,
+                    name: menuInfo.rootMenu.name
+                };
+                this.embeddedState.currentMenus = menuInfo.children;
+                this.embeddedState.breadcrumbs = [
+                    { id: menuInfo.rootMenu.id, name: menuInfo.rootMenu.name, type: 'app' },
+                    { name: title, type: 'view' }
+                ];
+            } else {
+                this.embeddedState.currentApp = { name: title };
+                this.embeddedState.currentMenus = [];
+            }
+
+            // Load available view types dynamically
+            await this.loadAvailableViewTypes(resModel);
+
+            // Ensure we use an available view type
+            if (!this.embeddedState.availableViewTypes.includes(viewType)) {
+                viewType = this.embeddedState.availableViewTypes[0] || "list";
+                this.embeddedState.currentViewType = viewType;
+            }
+
+            // Build view props dynamically
+            this.buildDynamicViewProps(resModel, viewType, domain, context);
 
         } catch (error) {
             console.error("Failed to load embedded view:", error);
-            this.notification.add(_t("Failed to load view: ") + error.message, { type: "warning" });
-            this.closeEmbeddedView();
+            this.embeddedState.errorMessage = error.message || "Failed to load view";
+            this.embeddedState.viewProps = null;
         } finally {
             this.embeddedState.loading = false;
         }
     }
 
     /**
-     * Get view ID for a model and view type
+     * Build view props dynamically - handles all models and view types
      */
-    async getViewId(resModel, viewType) {
-        try {
-            const result = await this.orm.call(
-                "ir.ui.view",
-                "search",
-                [[["model", "=", resModel], ["type", "=", viewType]]],
-                { limit: 1 }
-            );
-            return result.length ?  result[0] : false;
-        } catch {
-            return false;
+    buildDynamicViewProps(resModel, viewType, domain = [], context = {}, resId = false) {
+        // Clean and prepare context
+        const fullContext = this.prepareContext(resModel, context);
+        
+        // Clean domain - remove any problematic entries
+        const cleanDomain = this.cleanDomain(domain);
+
+        // Build base props
+        const props = {
+            resModel: resModel,
+            type: viewType,
+            domain: cleanDomain,
+            context: fullContext,
+            // Control panel configuration
+            display: {
+                controlPanel: {
+                    "top-left": true,
+                    "top-right": true,
+                    "bottom-left": true,
+                    "bottom-right": true,
+                },
+            },
+            // Callbacks for navigation
+            selectRecord: (resId, options) => this.handleSelectRecord(resModel, resId, options),
+            createRecord: () => this.handleCreateRecord(resModel),
+        };
+
+        // For form views, add resId
+        if (viewType === "form" && resId) {
+            props.resId = resId;
         }
+
+        // Increment key to force re-render
+        this.embeddedState.viewKey++;
+        this.embeddedState.viewProps = props;
+        this.embeddedState.errorMessage = null;
     }
 
     /**
-     * Handle record selection in embedded view
+     * Prepare context with appropriate defaults based on model
      */
-    async onEmbeddedRecordSelect(resModel, resId, options) {
-        // Open form view in modal
-        await this.actionService.doAction({
-            type: "ir.actions.act_window",
-            res_model: resModel,
-            res_id: resId,
-            views: [[false, "form"]],
-            target: "new",
-        });
-        // Refresh the embedded view after modal closes
-        this.refreshEmbeddedView();
-    }
+    prepareContext(resModel, baseContext = {}) {
+        const context = { ...baseContext };
 
-    /**
-     * Handle create record in embedded view
-     */
-    async onEmbeddedCreateRecord(resModel) {
-        const context = {};
+        // Add employee defaults for HR models
         if (this.state.employee?.id) {
-            if (["hr.leave", "hr.attendance", "hr.payslip", "hr.expense"].includes(resModel)) {
+            const hrModels = [
+                "hr.leave", "hr.leave.allocation", "hr.attendance", 
+                "hr.payslip", "hr.expense", "hr.expense.sheet",
+                "hr.contract", "hr.appraisal"
+            ];
+            if (hrModels.includes(resModel)) {
                 context.default_employee_id = this.state.employee.id;
             }
         }
-        
-        await this.actionService.doAction({
-            type: "ir.actions.act_window",
-            res_model: resModel,
-            views: [[false, "form"]],
-            target: "new",
-            context: context,
-        });
-        // Refresh after creation
-        this.refreshEmbeddedView();
+
+        // Add common context flags
+        context.dashboard_embedded = true;
+
+        return context;
     }
 
     /**
-     * Switch view type in embedded mode (list <-> kanban <-> calendar)
+     * Clean domain - handle various domain formats safely
      */
-    async switchEmbeddedViewType(newType) {
-        if (! this.embeddedState.viewProps) return;
-        
-        this.embeddedState.loading = true;
-        const currentProps = this.embeddedState.viewProps;
+    cleanDomain(domain) {
+        if (!domain) return [];
+        if (! Array.isArray(domain)) return [];
         
         try {
-            const viewId = await this.getViewId(currentProps.resModel, newType);
-            this.embeddedState.viewProps = {
-                ...currentProps,
-                type: newType,
-                viewId: viewId,
-            };
-        } finally {
-            this.embeddedState.loading = false;
+            // Filter out any invalid domain entries
+            return domain.filter(item => {
+                if (Array.isArray(item)) {
+                    // Valid domain tuple should have 3 elements
+                    return item.length === 3;
+                }
+                // Allow operators like '&', '|', '!'
+                if (typeof item === 'string' && ['&', '|', '!'].includes(item)) {
+                    return true;
+                }
+                return false;
+            });
+        } catch (e) {
+            console.warn("Error cleaning domain:", e);
+            return [];
         }
     }
 
     /**
-     * Refresh the current embedded view
+     * Handle record selection - navigate to form view
+     */
+    async handleSelectRecord(resModel, resId, options = {}) {
+        // Get record name for breadcrumb
+        let recordName = `#${resId}`;
+        try {
+            const records = await this.orm.read(resModel, [resId], ["display_name"]);
+            if (records.length > 0 && records[0].display_name) {
+                recordName = records[0].display_name;
+            }
+        } catch (e) {
+            // Use default name
+        }
+
+        // Update breadcrumbs
+        const currentBreadcrumbs = [...this.embeddedState.breadcrumbs];
+        currentBreadcrumbs.push({
+            name: recordName,
+            type: 'record',
+            resId: resId,
+            previousViewType: this.embeddedState.currentViewType
+        });
+
+        this.embeddedState.breadcrumbs = currentBreadcrumbs;
+        this.embeddedState.viewTitle = recordName;
+        this.embeddedState.currentResId = resId;
+        this.embeddedState.currentViewType = "form";
+
+        // Build form view props
+        this.buildDynamicViewProps(
+            resModel,
+            "form",
+            [],
+            this.embeddedState.currentContext,
+            resId
+        );
+    }
+
+    /**
+     * Handle create record - open empty form
+     */
+    handleCreateRecord(resModel) {
+        // Update breadcrumbs
+        const currentBreadcrumbs = [...this.embeddedState.breadcrumbs];
+        currentBreadcrumbs.push({
+            name: _t("New"),
+            type: 'new',
+            previousViewType: this.embeddedState.currentViewType
+        });
+
+        this.embeddedState.breadcrumbs = currentBreadcrumbs;
+        this.embeddedState.viewTitle = _t("New");
+        this.embeddedState.currentResId = false;
+        this.embeddedState.currentViewType = "form";
+
+        // Build form view props for new record
+        this.buildDynamicViewProps(
+            resModel,
+            "form",
+            [],
+            this.embeddedState.currentContext,
+            false
+        );
+    }
+
+    /**
+     * Dynamically find menus for any model
+     */
+    async loadMenusForModel(resModel) {
+        try {
+            // First, try to find an action for this model
+            const actions = await this.orm.searchRead(
+                "ir.actions.act_window",
+                [["res_model", "=", resModel]],
+                ["id", "name"],
+                { limit: 1 }
+            );
+
+            if (actions.length > 0) {
+                // Find menu that links to this action
+                const actionId = actions[0].id;
+                const menus = await this.orm.searchRead(
+                    "ir.ui.menu",
+                    [["action", "=", `ir.actions.act_window,${actionId}`]],
+                    ["id", "name", "parent_id"],
+                    { limit: 1 }
+                );
+
+                if (menus.length > 0) {
+                    // Find root menu
+                    let currentMenu = menus[0];
+                    while (currentMenu.parent_id) {
+                        const parentMenus = await this.orm.searchRead(
+                            "ir.ui.menu",
+                            [["id", "=", currentMenu.parent_id[0]]],
+                            ["id", "name", "parent_id"],
+                            { limit: 1 }
+                        );
+                        if (parentMenus.length > 0) {
+                            currentMenu = parentMenus[0];
+                        } else {
+                            break;
+                        }
+                    }
+
+                    // Load children of root menu
+                    const menuData = await this.orm.call(
+                        "ir.ui.menu",
+                        "get_menu_with_all_children",
+                        [currentMenu.id]
+                    );
+
+                    return {
+                        rootMenu: currentMenu,
+                        children: menuData?.children || []
+                    };
+                }
+            }
+
+            return { rootMenu: null, children: [] };
+        } catch (error) {
+            console.error("Failed to load menus for model:", error);
+            return { rootMenu: null, children: [] };
+        }
+    }
+
+    /**
+     * Load available view types for any model
+     */
+    async loadAvailableViewTypes(resModel) {
+        try {
+            // Get views from ir.ui.view
+            const views = await this.orm.searchRead(
+                "ir.ui.view",
+                [
+                    ["model", "=", resModel],
+                    ["type", "in", ["list", "tree", "kanban", "form", "calendar", "pivot", "graph", "activity"]]
+                ],
+                ["type"],
+                { limit: 50 }
+            );
+
+            // Normalize types (tree -> list)
+            const typeSet = new Set();
+            for (const view of views) {
+                const type = view.type === "tree" ? "list" : view.type;
+                typeSet.add(type);
+            }
+
+            // Convert to array
+            let availableTypes = Array.from(typeSet);
+
+            // Ensure at least list and form are available
+            if (!availableTypes.includes("list")) {
+                availableTypes.unshift("list");
+            }
+            if (!availableTypes.includes("form")) {
+                availableTypes.push("form");
+            }
+
+            this.embeddedState.availableViewTypes = availableTypes;
+        } catch (error) {
+            console.error("Failed to load view types:", error);
+            this.embeddedState.availableViewTypes = ["list", "form"];
+        }
+    }
+
+    /**
+     * Switch view type
+     */
+    switchEmbeddedViewType(newType) {
+        if (! this.embeddedState.currentResModel) return;
+        if (this.embeddedState.currentViewType === newType) return;
+
+        // If in form view, go back to list first
+        if (this.embeddedState.currentViewType === "form") {
+            this.goBackFromForm();
+            if (newType === "list" || newType === "kanban") {
+                this.embeddedState.currentViewType = newType;
+                this.buildDynamicViewProps(
+                    this.embeddedState.currentResModel,
+                    newType,
+                    this.embeddedState.currentDomain,
+                    this.embeddedState.currentContext
+                );
+            }
+            return;
+        }
+
+        this.embeddedState.currentViewType = newType;
+        this.buildDynamicViewProps(
+            this.embeddedState.currentResModel,
+            newType,
+            this.embeddedState.currentDomain,
+            this.embeddedState.currentContext
+        );
+    }
+
+    /**
+     * Go back from form view to list/kanban
+     */
+    goBackFromForm() {
+        if (this.embeddedState.breadcrumbs.length > 1) {
+            const lastCrumb = this.embeddedState.breadcrumbs[this.embeddedState.breadcrumbs.length - 1];
+            this.embeddedState.breadcrumbs = this.embeddedState.breadcrumbs.slice(0, -1);
+            
+            const previousType = lastCrumb.previousViewType || "list";
+            this.embeddedState.currentViewType = previousType;
+            this.embeddedState.currentResId = false;
+            
+            if (this.embeddedState.breadcrumbs.length > 0) {
+                this.embeddedState.viewTitle = this.embeddedState.breadcrumbs[this.embeddedState.breadcrumbs.length - 1].name;
+            }
+        }
+    }
+
+    /**
+     * Check if view type is available
+     */
+    isViewTypeAvailable(viewType) {
+        return this.embeddedState.availableViewTypes.includes(viewType);
+    }
+
+    /**
+     * Refresh current view
      */
     refreshEmbeddedView() {
-        if (! this.embeddedState.viewProps) return;
-        
-        // Force re-render by briefly clearing and restoring viewProps
-        const currentProps = { ...this.embeddedState.viewProps };
+        if (! this.embeddedState.currentResModel) return;
+
+        this.embeddedState.loading = true;
         this.embeddedState.viewProps = null;
-        
+
         setTimeout(() => {
-            this.embeddedState.viewProps = currentProps;
-        }, 50);
+            this.buildDynamicViewProps(
+                this.embeddedState.currentResModel,
+                this.embeddedState.currentViewType,
+                this.embeddedState.currentDomain,
+                this.embeddedState.currentContext,
+                this.embeddedState.currentResId
+            );
+            this.embeddedState.loading = false;
+        }, 100);
     }
 
     // ==================== APP EMBEDDING ====================
 
     async loadEmbeddedApp(app) {
-        if (! app) return;
+        if (!app) return;
 
         this.embeddedState.loading = true;
+        this.embeddedState.errorMessage = null;
 
         try {
-            // Get menu structure
-            const menuData = await this.orm.call("ir.ui.menu", "get_menu_with_all_children", [app.id]);
+            const menuData = await this.orm.call(
+                "ir.ui.menu",
+                "get_menu_with_all_children",
+                [app.id]
+            );
 
             this.embeddedState.isEmbeddedMode = true;
             this.embeddedState.currentApp = app;
@@ -289,85 +591,171 @@ export class ZohoDashboard extends Component {
             this.embeddedState.viewTitle = app.name;
             this.state.currentView = "embedded";
 
-            // Find first action
             let actionId = menuData?.action_id;
+            let actionMenu = null;
+
             if (! actionId && menuData?.children?.length) {
-                const firstMenu = this.findFirstMenuWithAction(menuData.children);
-                if (firstMenu) {
-                    actionId = firstMenu.action_id;
+                actionMenu = this.findFirstMenuWithAction(menuData.children);
+                if (actionMenu) {
+                    actionId = actionMenu.action_id;
                     this.embeddedState.breadcrumbs.push({
-                        id: firstMenu.id,
-                        name: firstMenu.name,
+                        id: actionMenu.id,
+                        name: actionMenu.name,
                         type: 'menu'
                     });
+                    this.embeddedState.viewTitle = actionMenu.name;
                 }
             }
 
             if (actionId) {
-                await this.loadEmbeddedAction(actionId);
+                await this.loadActionById(actionId);
             } else {
-                this.notification.add(_t("No action found for ") + app.name, { type: "warning" });
-                this.closeEmbeddedView();
+                this.embeddedState.errorMessage = _t("No action found for ") + app.name;
             }
 
         } catch (error) {
             console.error("Failed to open app:", error);
-            this.notification.add(_t("Failed to open ") + app.name, { type: "warning" });
-            this.closeEmbeddedView();
+            this.embeddedState.errorMessage = _t("Failed to open ") + app.name;
         } finally {
             this.embeddedState.loading = false;
         }
     }
 
     /**
-     * Load an action by ID and render it embedded
+     * Load action by ID and set up embedded view
      */
-    async loadEmbeddedAction(actionId) {
+    async loadActionById(actionId) {
         try {
-            // Get action definition
-            const action = await this.orm.call("ir.actions.actions", "read", [[actionId]]);
-            
-            if (!action.length) {
-                throw new Error("Action not found");
+            const numericId = this.extractActionId(actionId);
+            if (!numericId) {
+                throw new Error("Invalid action ID");
             }
 
-            const actionDef = action[0];
-            
-            // For window actions, extract the view info
-            if (actionDef.type === "ir.actions.act_window") {
-                const windowAction = await this.orm.call(
-                    "ir.actions.act_window",
-                    "read",
-                    [[actionId]],
-                    { fields: ["res_model", "domain", "context", "view_mode", "views", "view_id"] }
-                );
+            const actionData = await this.orm.call(
+                "ir.actions.act_window",
+                "read",
+                [[numericId]],
+                { fields: ["res_model", "view_mode", "domain", "context", "name", "views"] }
+            );
 
-                if (windowAction.length) {
-                    const wa = windowAction[0];
-                    const viewMode = wa.view_mode?.split(",")[0] || "list";
-                    let domain = [];
-                    
-                    try {
-                        if (wa.domain && typeof wa.domain === "string") {
-                            domain = JSON.parse(wa.domain.replace(/'/g, '"'));
-                        } else if (Array.isArray(wa.domain)) {
-                            domain = wa.domain;
-                        }
-                    } catch {}
+            if (actionData && actionData.length) {
+                const action = actionData[0];
+                const viewModes = (action.view_mode || "list").split(",");
+                let viewType = viewModes[0].trim();
+                if (viewType === "tree") viewType = "list";
 
-                    await this.loadEmbeddedView(wa.res_model, this.embeddedState.viewTitle, domain, viewMode);
+                const domain = this.parseDomain(action.domain);
+                const context = this.parseContext(action.context);
+
+                this.embeddedState.currentResModel = action.res_model;
+                this.embeddedState.currentViewType = viewType;
+                this.embeddedState.currentDomain = domain;
+                this.embeddedState.currentContext = context;
+                this.embeddedState.currentResId = false;
+
+                if (action.name) {
+                    this.embeddedState.viewTitle = action.name;
                 }
+
+                await this.loadAvailableViewTypes(action.res_model);
+
+                if (! this.embeddedState.availableViewTypes.includes(viewType)) {
+                    viewType = this.embeddedState.availableViewTypes[0] || "list";
+                    this.embeddedState.currentViewType = viewType;
+                }
+
+                this.buildDynamicViewProps(action.res_model, viewType, domain, context);
             }
+
         } catch (error) {
             console.error("Failed to load action:", error);
             throw error;
         }
     }
 
+    /**
+     * Parse domain from action - handle all formats
+     */
+    parseDomain(domainValue) {
+        if (!domainValue) return [];
+        
+        if (Array.isArray(domainValue)) {
+            return this.cleanDomain(domainValue);
+        }
+
+        if (typeof domainValue === 'string') {
+            try {
+                let cleaned = domainValue
+                    .replace(/'/g, '"')
+                    .replace(/True/g, 'true')
+                    .replace(/False/g, 'false')
+                    .replace(/None/g, 'null')
+                    .replace(/\buid\b/g, String(this.userId || 1));
+                
+                const parsed = JSON.parse(cleaned);
+                return this.cleanDomain(parsed);
+            } catch (e) {
+                console.warn("Could not parse domain:", domainValue);
+                return [];
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * Parse context from action
+     */
+    parseContext(contextValue) {
+        if (!contextValue) return {};
+        
+        if (typeof contextValue === 'object' && ! Array.isArray(contextValue)) {
+            return contextValue;
+        }
+
+        if (typeof contextValue === 'string') {
+            try {
+                let cleaned = contextValue
+                    .replace(/'/g, '"')
+                    .replace(/True/g, 'true')
+                    .replace(/False/g, 'false')
+                    .replace(/None/g, 'null')
+                    .replace(/\buid\b/g, String(this.userId || 1));
+                
+                return JSON.parse(cleaned);
+            } catch (e) {
+                console.warn("Could not parse context:", contextValue);
+                return {};
+            }
+        }
+
+        return {};
+    }
+
+    /**
+     * Extract numeric action ID
+     */
+    extractActionId(actionId) {
+        if (typeof actionId === 'number') {
+            return actionId;
+        }
+        if (typeof actionId === 'string') {
+            const match = actionId.match(/(\d+)$/);
+            if (match) {
+                return parseInt(match[1], 10);
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Handle menu click in embedded app
+     */
     async onEmbeddedMenuClick(menu) {
         if (!menu) return;
 
         this.embeddedState.loading = true;
+        this.embeddedState.errorMessage = null;
 
         try {
             const appCrumb = this.embeddedState.breadcrumbs[0];
@@ -376,23 +764,34 @@ export class ZohoDashboard extends Component {
                 { id: menu.id, name: menu.name, type: 'menu' }
             ];
             this.embeddedState.viewTitle = menu.name;
+            this.embeddedState.currentResId = false;
 
             if (menu.action_id) {
-                await this.loadEmbeddedAction(menu.action_id);
+                await this.loadActionById(menu.action_id);
             } else if (menu.children?.length) {
                 const firstChild = this.findFirstMenuWithAction(menu.children);
                 if (firstChild) {
-                    await this.loadEmbeddedAction(firstChild.action_id);
+                    this.embeddedState.breadcrumbs.push({
+                        id: firstChild.id,
+                        name: firstChild.name,
+                        type: 'submenu'
+                    });
+                    this.embeddedState.viewTitle = firstChild.name;
+                    await this.loadActionById(firstChild.action_id);
                 }
             }
 
         } catch (error) {
             console.error("Failed to load menu:", error);
+            this.embeddedState.errorMessage = _t("Failed to load menu");
         } finally {
             this.embeddedState.loading = false;
         }
     }
 
+    /**
+     * Find first menu with action recursively
+     */
     findFirstMenuWithAction(menus) {
         for (const menu of menus) {
             if (menu.action_id) return menu;
@@ -404,22 +803,58 @@ export class ZohoDashboard extends Component {
         return null;
     }
 
+    /**
+     * Close embedded view
+     */
     closeEmbeddedView() {
         this.embeddedState.isEmbeddedMode = false;
         this.embeddedState.currentApp = null;
         this.embeddedState.currentMenus = [];
         this.embeddedState.breadcrumbs = [];
         this.embeddedState.viewTitle = "";
+        this.embeddedState.currentResModel = null;
+        this.embeddedState.currentResId = false;
+        this.embeddedState.currentDomain = [];
+        this.embeddedState.currentContext = {};
+        this.embeddedState.currentViewType = "list";
+        this.embeddedState.availableViewTypes = [];
         this.embeddedState.viewProps = null;
+        this.embeddedState.errorMessage = null;
         this.state.currentView = "home";
         this.state.activeMainTab = "myspace";
-        
+
         setTimeout(() => this.renderCharts(), 300);
     }
 
+    /**
+     * Handle breadcrumb navigation
+     */
     onBreadcrumbClick(crumb, index) {
+        if (index === this.embeddedState.breadcrumbs.length - 1) {
+            return;
+        }
+
         if (index === 0 && crumb.type === 'app') {
             this.loadEmbeddedApp(this.embeddedState.currentApp);
+            return;
+        }
+
+        const removedCrumbs = this.embeddedState.breadcrumbs.slice(index + 1);
+        this.embeddedState.breadcrumbs = this.embeddedState.breadcrumbs.slice(0, index + 1);
+        
+        const lastRecordCrumb = removedCrumbs.find(c => c.type === 'record' || c.type === 'new');
+        if (lastRecordCrumb) {
+            const viewType = lastRecordCrumb.previousViewType || "list";
+            this.embeddedState.currentViewType = viewType;
+            this.embeddedState.currentResId = false;
+            this.embeddedState.viewTitle = crumb.name;
+            
+            this.buildDynamicViewProps(
+                this.embeddedState.currentResModel,
+                viewType,
+                this.embeddedState.currentDomain,
+                this.embeddedState.currentContext
+            );
         }
     }
 
@@ -435,7 +870,7 @@ export class ZohoDashboard extends Component {
 
     async loadLeaveBalances() {
         try {
-            if (! this.state.employee?.id) return;
+            if (!this.state.employee?.id) return;
 
             const allocations = await this.orm.searchRead(
                 "hr.leave.allocation",
@@ -499,7 +934,7 @@ export class ZohoDashboard extends Component {
             this.state.skills = skills.map(s => ({
                 id: s.id,
                 name: s.skill_id ? s.skill_id[1] : 'Unknown',
-                type: s.skill_type_id ?  s.skill_type_id[1] : '',
+                type: s.skill_type_id ? s.skill_type_id[1] : '',
                 progress: s.level_progress || 0,
             }));
         } catch (error) {
@@ -656,7 +1091,7 @@ export class ZohoDashboard extends Component {
     }
 
     renderCharts() {
-        if (!this.state.chartLoaded || typeof Chart === "undefined") return;
+        if (! this.state.chartLoaded || typeof Chart === "undefined") return;
         setTimeout(() => {
             this.renderLeaveChart();
             if (this.state.isManager) {
@@ -668,7 +1103,7 @@ export class ZohoDashboard extends Component {
     renderLeaveChart() {
         if (typeof Chart === "undefined") return;
         const canvas = document.getElementById("zohoLeaveChart");
-        if (! canvas || !this.state.leaveChartData.length) return;
+        if (!canvas || !this.state.leaveChartData.length) return;
 
         if (this.leaveChartInstance) this.leaveChartInstance.destroy();
 
@@ -778,7 +1213,11 @@ export class ZohoDashboard extends Component {
     openSidebarModel(item) {
         let domain = [];
         if (this.state.employee?.id) {
-            if (["hr.leave", "hr.attendance", "hr.payslip", "hr.expense"].includes(item.model)) {
+            const employeeDomainModels = [
+                "hr.leave", "hr.attendance", "hr.payslip", 
+                "hr.expense", "hr.contract"
+            ];
+            if (employeeDomainModels.includes(item.model)) {
                 domain = [["employee_id", "=", this.state.employee.id]];
             } else if (item.model === "account.analytic.line") {
                 domain = [["project_id", "!=", false]];
@@ -809,17 +1248,16 @@ export class ZohoDashboard extends Component {
     // ==================== APP CLICK ====================
 
     async onAppClick(app) {
-        if (!app) return;
+        if (! app) return;
 
-        const appName = app.name?.toLowerCase() || "";
+        const appName = (app.name || "").toLowerCase();
 
-        // Special apps that need full page navigation
-        if (appName.includes("setting") || appName === "apps") {
+        const fullPageApps = ["settings", "apps", "general settings", "users"];
+        if (fullPageApps.some(name => appName.includes(name))) {
             window.location.href = `/web#menu_id=${app.id}`;
             return;
         }
 
-        // Open in embedded mode using View component
         await this.loadEmbeddedApp(app);
     }
 
@@ -829,13 +1267,13 @@ export class ZohoDashboard extends Component {
         try {
             await this.orm.call("hr.employee", "attendance_manual", [[]]);
 
-            if (this.state.employee.attendance_state === "checked_out") {
+            if (this.state.employee?.attendance_state === "checked_out") {
                 this.state.employee.attendance_state = "checked_in";
                 this.state.timerRunning = true;
                 this.state.timerSeconds = 0;
                 this.startTimer();
                 this.notification.add(_t("Successfully Checked In"), { type: "success" });
-            } else {
+            } else if (this.state.employee) {
                 this.state.employee.attendance_state = "checked_out";
                 this.state.timerRunning = false;
                 if (this.timerInterval) clearInterval(this.timerInterval);
@@ -915,7 +1353,7 @@ export class ZohoDashboard extends Component {
 
     openPayslips() {
         this.loadEmbeddedView("hr.payslip", "My Payslips",
-            [["employee_id", "=", this.state.employee?.id || false]]);
+            this.state.employee?.id ? [["employee_id", "=", this.state.employee.id]] : []);
     }
 
     openTimesheets() {
@@ -925,7 +1363,7 @@ export class ZohoDashboard extends Component {
 
     openContracts() {
         this.loadEmbeddedView("hr.contract", "My Contracts",
-            [["employee_id", "=", this.state.employee?.id || false]]);
+            this.state.employee?.id ? [["employee_id", "=", this.state.employee.id]] : []);
     }
 
     openLeaveRequests() {
@@ -959,17 +1397,17 @@ export class ZohoDashboard extends Component {
 
     openAllAttendance() {
         this.loadEmbeddedView("hr.attendance", "My Attendance",
-            [["employee_id", "=", this.state.employee?.id || false]]);
+            this.state.employee?.id ? [["employee_id", "=", this.state.employee.id]] : []);
     }
 
     openAllLeaves() {
         this.loadEmbeddedView("hr.leave", "My Leaves",
-            [["employee_id", "=", this.state.employee?.id || false]]);
+            this.state.employee?.id ? [["employee_id", "=", this.state.employee.id]] : []);
     }
 
     openAllExpenses() {
         this.loadEmbeddedView("hr.expense", "My Expenses",
-            [["employee_id", "=", this.state.employee?.id || false]]);
+            this.state.employee?.id ? [["employee_id", "=", this.state.employee.id]] : []);
     }
 
     openAllProjects() {
