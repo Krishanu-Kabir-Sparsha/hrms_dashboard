@@ -69,11 +69,11 @@
                                 <span class="clock_time" t-esc="formattedCurrentTime"/>
                                 <span class="clock_date" t-esc="formattedCurrentDate"/>
                             </div>
-                            <button class="header_action_btn" t-on-click="addLeave">+ Quick Add</button>
+                            <button class="header_action_btn" t-on-click="onQuickAdd">+ Quick Add</button>
                         </div>
                     </header>
 
-                    <!-- APP SUBMENU (When in embedded mode with menus) -->
+                    <!-- APP SUBMENU BAR -->
                     <t t-if="embeddedState.isEmbeddedMode and embeddedState.currentMenus.length">
                         <div class="zoho_app_menubar">
                             <div class="menubar_items">
@@ -93,9 +93,20 @@
                                     </div>
                                 </t>
                             </div>
-                            <div class="menubar_actions">
-                                <button class="menubar_btn view_switch_btn" t-on-click="() => this.switchEmbeddedViewType('list')" title="List View">📋</button>
-                                <button class="menubar_btn view_switch_btn" t-on-click="() => this.switchEmbeddedViewType('kanban')" title="Kanban View">📊</button>
+                                                        <div class="menubar_actions">
+                                <button class="view_switch_btn" 
+                                        t-att-class="{'active': embeddedState.currentViewType === 'list'}"
+                                        t-on-click="() => this.switchEmbeddedViewType('list')" 
+                                        title="List View">📋</button>
+                                <button class="view_switch_btn" 
+                                        t-att-class="{'active': embeddedState.currentViewType === 'kanban'}"
+                                        t-on-click="() => this.switchEmbeddedViewType('kanban')" 
+                                        title="Kanban View">📊</button>
+                                <button class="view_switch_btn" 
+                                        t-att-class="{'active': embeddedState.currentViewType === 'form'}"
+                                        t-on-click="() => this.goBackFromForm()" 
+                                        t-if="embeddedState.currentViewType === 'form'"
+                                        title="Back to List">⬅️</button>
                                 <button class="menubar_refresh_btn" t-on-click="refreshEmbeddedView" title="Refresh">🔄</button>
                                 <button class="menubar_close_btn" t-on-click="closeEmbeddedView">✕ Close</button>
                             </div>
@@ -103,12 +114,23 @@
                     </t>
 
                     <!-- SIMPLE TITLE BAR (When embedded without menus) -->
-                    <t t-if="embeddedState.isEmbeddedMode and !embeddedState.currentMenus.length">
+                    <t t-if="embeddedState.isEmbeddedMode and ! embeddedState.currentMenus.length">
                         <div class="zoho_embedded_titlebar">
                             <h3 t-esc="embeddedState.viewTitle"/>
                             <div class="titlebar_actions">
-                                <button class="titlebar_btn view_switch_btn" t-on-click="() => this.switchEmbeddedViewType('list')" title="List View">📋</button>
-                                <button class="titlebar_btn view_switch_btn" t-on-click="() => this.switchEmbeddedViewType('kanban')" title="Kanban View">📊</button>
+                                <button class="titlebar_btn view_switch_btn" 
+                                        t-att-class="{'active': embeddedState.currentViewType === 'list'}"
+                                        t-on-click="() => this.switchEmbeddedViewType('list')" 
+                                        title="List View">📋</button>
+                                <button class="titlebar_btn view_switch_btn" 
+                                        t-att-class="{'active':  embeddedState.currentViewType === 'kanban'}"
+                                        t-on-click="() => this.switchEmbeddedViewType('kanban')" 
+                                        title="Kanban View">📊</button>
+                                <button class="titlebar_btn view_switch_btn" 
+                                        t-att-class="{'active': embeddedState.currentViewType === 'form'}"
+                                        t-on-click="() => this.goBackFromForm()" 
+                                        t-if="embeddedState.currentViewType === 'form'"
+                                        title="Back to List">⬅️</button>
                                 <button class="titlebar_refresh_btn" t-on-click="refreshEmbeddedView" title="Refresh">🔄</button>
                                 <button class="titlebar_close_btn" t-on-click="closeEmbeddedView">✕ Close</button>
                             </div>
@@ -118,9 +140,9 @@
                     <!-- CONTENT CONTAINER -->
                     <div class="zoho_content_container">
                         
-                        <!-- ==================== EMBEDDED VIEW USING OWL VIEW COMPONENT ==================== -->
+                        <!-- ==================== EMBEDDED VIEW ==================== -->
                         <t t-if="embeddedState.isEmbeddedMode">
-                            <div class="zoho_embedded_view_container" t-ref="embeddedContainer">
+                            <div class="zoho_embedded_view_container">
                                 <t t-if="embeddedState.loading">
                                     <div class="embedded_loader">
                                         <div class="zoho_spinner"/>
@@ -131,15 +153,12 @@
                                     <div class="embedded_error">
                                         <div class="error_icon">⚠️</div>
                                         <p t-esc="embeddedState.errorMessage"/>
-                                        <div class="error_actions">
-                                            <button class="btn_outline" t-on-click="refreshEmbeddedView">Try Again</button>
-                                            <button class="btn_primary" t-on-click="closeEmbeddedView">Return to Dashboard</button>
-                                        </div>
+                                        <button class="btn_primary" t-on-click="closeEmbeddedView">Return to Dashboard</button>
                                     </div>
                                 </t>
                                 <t t-elif="embeddedState.viewProps">
-                                    <div class="embedded_view_wrapper" t-key="embeddedState.viewKey">
-                                        <View t-props="embeddedState.viewProps"/>
+                                    <div class="embedded_view_wrapper">
+                                        <View t-props="embeddedState.viewProps" t-key="embeddedState.viewKey"/>
                                     </div>
                                 </t>
                                 <t t-else="">
@@ -153,7 +172,7 @@
                         </t>
 
                         <!-- ==================== HOME VIEW ==================== -->
-                        <t t-if="state.currentView === 'home' and !embeddedState.isEmbeddedMode">
+                        <t t-if="state.currentView === 'home' and ! embeddedState.isEmbeddedMode">
                             <div class="zoho_home_view">
                                 <!-- Employee Profile Panel -->
                                 <aside class="zoho_profile_panel">
@@ -252,7 +271,7 @@
                                                     <div class="team_member" t-on-click="() => this.openTeamMember(member)">
                                                         <div class="tm_avatar">
                                                             <t t-if="member.image">
-                                                                <img t-att-src="'data:image/png;base64,' + member.image" alt=""/>
+                                                                <img t-att-src="'data: image/png;base64,' + member.image" alt=""/>
                                                             </t>
                                                             <t t-else="">👤</t>
                                                             <span class="tm_status" t-att-class="{ 'is-online': member.status === 'checked_in' }"/>
@@ -268,9 +287,8 @@
                                     </t>
                                 </aside>
 
-                                <!-- Main Dashboard Area (Keep the rest of your existing home view content) -->
+                                <!-- Main Dashboard Area -->
                                 <main class="zoho_dashboard_content">
-                                    <!-- ... existing home view content stays the same ...-->
                                     <t t-if="currentAnnouncement">
                                         <div class="announcement_banner">
                                             <span class="ab_icon">📢</span>
@@ -380,7 +398,7 @@
                                                 <h3>Attendance Records</h3>
                                                 <div class="section_actions">
                                                     <button class="btn_outline" t-on-click="openAllAttendance">View All</button>
-                                                                                                        <button class="btn_primary" t-on-click="addAttendance">+ Add</button>
+                                                    <button class="btn_primary" t-on-click="addAttendance">+ Add</button>
                                                 </div>
                                             </div>
                                             <div class="data_table_wrapper">
@@ -446,7 +464,7 @@
                                                                 <td t-esc="leave.request_date_from"/>
                                                                 <td t-esc="leave.request_date_to"/>
                                                                 <td t-esc="leave.type"/>
-                                                                <td><span class="status_badge" t-att-style="'background:' + leave.color" t-esc="leave.state"/></td>
+                                                                <td><span class="status_badge" t-att-style="'background: ' + leave.color" t-esc="leave.state"/></td>
                                                             </tr>
                                                         </t>
                                                         <t t-if="!state.leaves.length">
@@ -485,7 +503,7 @@
                                                                 <td><span class="status_badge" t-att-style="'background:' + exp.color" t-esc="exp.state"/></td>
                                                             </tr>
                                                         </t>
-                                                        <t t-if="!state.expenses.length">
+                                                        <t t-if="! state.expenses.length">
                                                             <tr><td colspan="4" class="empty_cell">No records found</td></tr>
                                                         </t>
                                                     </tbody>
@@ -540,7 +558,7 @@
                                                             <span t-esc="b.birthday"/>
                                                         </div>
                                                     </t>
-                                                    <t t-if="! state.birthdays.length">
+                                                    <t t-if="!state.birthdays.length">
                                                         <div class="notif_empty">No upcoming birthdays</div>
                                                     </t>
                                                 </div>
@@ -552,7 +570,7 @@
                                                             <span t-esc="ev[2]"/>
                                                         </div>
                                                     </t>
-                                                    <t t-if="! state.events.length">
+                                                    <t t-if="!state.events.length">
                                                         <div class="notif_empty">No upcoming events</div>
                                                     </t>
                                                 </div>
@@ -662,7 +680,7 @@
                         </t>
 
                         <!-- ==================== ORGANIZATION VIEW ==================== -->
-                        <t t-if="state.currentView === 'organization' and ! embeddedState.isEmbeddedMode">
+                        <t t-if="state.currentView === 'organization' and !embeddedState.isEmbeddedMode">
                             <div class="zoho_page_content">
                                 <div class="page_header">
                                     <h2>Organization</h2>
@@ -686,7 +704,7 @@
                         </t>
 
                         <!-- ==================== OPERATIONS VIEW ==================== -->
-                        <t t-if="state.currentView === 'operations' and ! embeddedState.isEmbeddedMode">
+                        <t t-if="state.currentView === 'operations' and !embeddedState.isEmbeddedMode">
                             <div class="zoho_apps_page">
                                 <div class="apps_search_wrapper">
                                     <input type="text" 
@@ -707,7 +725,7 @@
                                             <span class="app_name" t-esc="app.name"/>
                                         </div>
                                     </t>
-                                    <t t-if="! filteredApps.length">
+                                    <t t-if="!filteredApps.length">
                                         <div class="apps_empty">
                                             <div class="ae_icon">🔍</div>
                                             <p>No applications found</p>
@@ -718,7 +736,7 @@
                         </t>
 
                         <!-- ==================== PROFILE VIEW ==================== -->
-                        <t t-if="state.currentView === 'profile' and ! embeddedState.isEmbeddedMode">
+                        <t t-if="state.currentView === 'profile' and !embeddedState.isEmbeddedMode">
                             <div class="zoho_profile_page">
                                 <div class="profile_main_card">
                                     <div class="pmc_header">
@@ -777,13 +795,22 @@
                 </div>
 
                 <!-- FLOATING ACTION BUTTON -->
-                <div class="zoho_fab">
+                <div class="zoho_fab" t-att-class="{'is-open': embeddedState.fabOpen}">
                     <div class="fab_menu">
-                        <div class="fab_item" t-on-click="addLeave" title="New Leave">📅</div>
-                        <div class="fab_item" t-on-click="addExpense" title="New Expense">💳</div>
-                        <div class="fab_item" t-on-click="addProject" title="New Task">📋</div>
+                        <div class="fab_item" t-on-click="addLeave" title="New Leave">
+                            📅
+                            <span class="fab_item_tooltip">New Leave</span>
+                        </div>
+                        <div class="fab_item" t-on-click="addExpense" title="New Expense">
+                            💳
+                            <span class="fab_item_tooltip">New Expense</span>
+                        </div>
+                        <div class="fab_item" t-on-click="addProject" title="New Task">
+                            📋
+                            <span class="fab_item_tooltip">New Task</span>
+                        </div>
                     </div>
-                    <div class="fab_main">+</div>
+                    <button class="fab_main" t-on-click="toggleFab">+</button>
                 </div>
             </t>
         </div>

@@ -19,6 +19,8 @@
         'hr_recruitment',
         'project',
         'event',
+        'mail',
+        
     ],
     'external_dependencies': {
         'python': ['pandas'],

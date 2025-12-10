@@ -7,6 +7,48 @@ import calendar
 class HrEmployee(models.Model):
     _inherit = 'hr.employee'
 
+    def attendance_manual(self, next_action=None):
+        """
+        Manual attendance check-in/check-out method for dashboard
+        This method handles toggling between checked_in and checked_out states
+        Compatible with Odoo 18 Community Edition
+        
+        Can be called in two ways:
+        1.As instance method: employee.attendance_manual()
+        2.As model method with IDs: self.env['hr.employee'].attendance_manual([employee_id])
+        """
+        # Handle both calling conventions
+        if self: 
+            # Called as instance method or with browse
+            employee = self[0] if len(self) > 0 else False
+        else:
+            # Called as model method - get current user's employee
+            employee = self.env.user.employee_id
+        
+        if not employee:
+            return False
+        
+        # Perform the attendance action
+        if employee.attendance_state == 'checked_out': 
+            # Check IN - Create new attendance record
+            self.env['hr.attendance'].sudo().create({
+                'employee_id':  employee.id,
+                'check_in': fields.Datetime.now(),
+            })
+        else:
+            # Check OUT - Find the open attendance and close it
+            attendance = self.env['hr.attendance'].sudo().search([
+                ('employee_id', '=', employee.id),
+                ('check_out', '=', False),
+            ], limit=1, order='check_in desc')
+            
+            if attendance:
+                attendance.write({
+                    'check_out': fields.Datetime.now(),
+                })
+        
+        return employee
+
     @api.model
     def check_user_group(self):
         """Check if current user is a manager"""
@@ -54,8 +96,8 @@ class HrEmployee(models.Model):
                 'image_1920': employee.image_1920 or False,
                 'image_128': employee.image_128 or False,
                 'job_id': [employee.job_id.id, employee.job_id.name] if employee.job_id else False,
-                'department_id': [employee.department_id.id, employee.department_id.name] if employee.department_id else False,
-                'work_email': employee.work_email or '',
+                'department_id':  [employee.department_id.id, employee.department_id.name] if employee.department_id else False,
+                'work_email':  employee.work_email or '',
                 'mobile_phone': employee.mobile_phone or '',
                 'work_phone': employee.work_phone or '',
                 'attendance_state': employee.attendance_state or 'checked_out',
@@ -65,12 +107,12 @@ class HrEmployee(models.Model):
                 'emp_timesheets': emp_timesheets,
                 'broad_factor': 0,
                 'leaves_to_approve': leaves_to_approve,
-                'leaves_today': leaves_today,
+                'leaves_today':  leaves_today,
                 'leaves_this_month': leaves_this_month,
                 'leaves_alloc_req': leaves_alloc_req,
                 'job_applications': job_applications,
                 'attendance_lines': attendance_lines,
-                'leave_lines': leave_lines,
+                'leave_lines':  leave_lines,
                 'expense_lines': expense_lines,
             }]
         except Exception as e:
@@ -78,7 +120,7 @@ class HrEmployee(models.Model):
 
     def _get_attendance_lines(self, employee):
         """Get recent attendance records"""
-        try:
+        try: 
             attendances = self.env['hr.attendance'].sudo().search([
                 ('employee_id', '=', employee.id)
             ], order='check_in desc', limit=10)
@@ -110,12 +152,12 @@ class HrEmployee(models.Model):
                 'draft': '#6c757d',
                 'confirm': '#ffc107',
                 'validate1': '#17a2b8',
-                'validate': '#28a745',
+                'validate':  '#28a745',
                 'refuse': '#dc3545',
             }
             
             lines = []
-            for leave in leaves:
+            for leave in leaves: 
                 lines.append({
                     'id': leave.id,
                     'request_date_from': leave.request_date_from.strftime('%Y-%m-%d') if leave.request_date_from else '',
@@ -130,7 +172,7 @@ class HrEmployee(models.Model):
 
     def _get_expense_lines(self, employee):
         """Get recent expense records"""
-        try:
+        try: 
             Expense = self.env['hr.expense']
             expenses = Expense.sudo().search([
                 ('employee_id', '=', employee.id)
@@ -139,7 +181,7 @@ class HrEmployee(models.Model):
             state_colors = {
                 'draft': '#6c757d',
                 'reported': '#ffc107',
-                'approved': '#17a2b8',
+                'approved':  '#17a2b8',
                 'done': '#28a745',
                 'refused': '#dc3545',
             }
@@ -155,7 +197,7 @@ class HrEmployee(models.Model):
                     'color': state_colors.get(exp.state, '#6c757d'),
                 })
             return lines
-        except Exception:
+        except Exception: 
             return []
 
     def _calculate_experience(self, employee):
@@ -182,7 +224,7 @@ class HrEmployee(models.Model):
             return self.env['hr.payslip'].sudo().search_count([
                 ('employee_id', '=', employee.id)
             ])
-        except Exception:
+        except Exception: 
             return 0
 
     def _get_contracts_count(self, employee):
@@ -199,7 +241,7 @@ class HrEmployee(models.Model):
                 ('employee_id', '=', employee.id),
                 ('project_id', '!=', False)
             ])
-        except Exception:
+        except Exception: 
             return 0
 
     def _get_leaves_to_approve(self):
@@ -207,7 +249,7 @@ class HrEmployee(models.Model):
             return self.env['hr.leave'].sudo().search_count([
                 ('state', 'in', ['confirm', 'validate1'])
             ])
-        except Exception:
+        except Exception: 
             return 0
 
     def _get_leaves_today(self):
@@ -232,7 +274,7 @@ class HrEmployee(models.Model):
                 ('date_to', '<=', last_day),
                 ('state', '=', 'validate')
             ])
-        except Exception:
+        except Exception: 
             return 0
 
     def _get_allocation_requests(self):
@@ -240,7 +282,7 @@ class HrEmployee(models.Model):
             return self.env['hr.leave.allocation'].sudo().search_count([
                 ('state', 'in', ['confirm', 'validate1'])
             ])
-        except Exception:
+        except Exception: 
             return 0
 
     def _get_job_applications(self):
@@ -295,12 +337,12 @@ class HrEmployee(models.Model):
                     })
             
             birthdays.sort(key=lambda x: x['days_until'])
-            result['birthday'] = birthdays[:5]
+            result['birthday'] = birthdays[: 5]
         except Exception:
             pass
 
         # Events
-        try:
+        try: 
             events = self.env['calendar.event'].sudo().search([
                 ('start', '>=', today),
                 ('start', '<=', today + timedelta(days=30))
@@ -311,7 +353,7 @@ class HrEmployee(models.Model):
             pass
 
         # Announcements
-        try:
+        try: 
             announcements = self.env['hr.announcement'].sudo().search([
                 ('state', '=', 'approved'),
                 ('date_start', '<=', today),
@@ -329,7 +371,7 @@ class HrEmployee(models.Model):
         """Get employee leave trend for chart"""
         try:
             employee = self.env.user.employee_id
-            if not employee:
+            if not employee: 
                 return []
 
             today = date.today()
@@ -342,7 +384,7 @@ class HrEmployee(models.Model):
                 first_day = month_date.replace(day=1)
                 if month_date.month == 12:
                     last_day = month_date.replace(day=31)
-                else:
+                else: 
                     last_day = (first_day + timedelta(days=32)).replace(day=1) - timedelta(days=1)
                 
                 leave_count = self.env['hr.leave'].sudo().search_count([
@@ -352,16 +394,16 @@ class HrEmployee(models.Model):
                     ('state', '=', 'validate')
                 ])
                 
-                result.append({'l_month': month_name, 'leave': leave_count})
+                result.append({'l_month': month_name, 'leave':  leave_count})
             
             return result
-        except Exception:
+        except Exception: 
             return []
 
     @api.model
     def get_dept_employee(self):
         """Get department-wise employee distribution"""
-        try:
+        try: 
             departments = self.env['hr.department'].sudo().search([])
             result = []
             
@@ -373,5 +415,5 @@ class HrEmployee(models.Model):
                     result.append({'label': dept.name, 'value': emp_count})
             
             return result
-        except Exception:
+        except Exception: 
             return []

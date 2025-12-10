@@ -13,15 +13,10 @@ export class ZohoDashboard extends Component {
     static components = { View };
 
     setup() {
-        // Core Services - Only use services that are available
+        // Core Services
         this.actionService = useService("action");
         this.orm = useService("orm");
         this.notification = useService("notification");
-        
-        // Note: "user" service is NOT available in client actions
-        // We'll get user info from the session or ORM calls instead
-        this.userId = null;
-        this.userContext = {};
 
         // Refs
         this.dashboardWrapperRef = useRef("dashboardWrapper");
@@ -43,6 +38,7 @@ export class ZohoDashboard extends Component {
             viewProps: null,
             viewKey: 0,
             errorMessage: null,
+            fabOpen: false,
         });
 
         // Local State
@@ -82,16 +78,16 @@ export class ZohoDashboard extends Component {
             { id: "attendance", icon: "⏰", label: "Attendance", model: "hr.attendance", title: "My Attendance" },
             { id: "timesheet", icon: "⏱️", label: "Timesheets", model: "account.analytic.line", title: "My Timesheets" },
             { id: "payroll", icon: "💰", label: "Payroll", model: "hr.payslip", title: "My Payslips" },
-            { id: "expense", icon: "💳", label: "Expenses", model: "hr.expense", title: "My Expenses" },
+            { id:  "expense", icon: "💳", label: "Expenses", model: "hr.expense", title: "My Expenses" },
             { id: "operations", icon: "⚙️", label: "Operations", action: "operations" },
         ];
 
         this.contentTabs = [
-            { id: "activities", label: "Activities" },
+            { id:  "activities", label: "Activities" },
             { id: "attendance", label: "Attendance" },
             { id: "leaves", label: "Leaves" },
             { id: "expenses", label: "Expenses" },
-            { id: "projects", label: "Projects" },
+            { id: "projects", label:  "Projects" },
             { id: "notifications", label: "Notifications" },
         ];
 
@@ -103,14 +99,13 @@ export class ZohoDashboard extends Component {
 
         // Lifecycle
         onWillStart(async () => {
-            await this.loadUserInfo();
             await this.loadChartLibrary();
             await this.loadInitialData();
             await this.loadPhase4Data();
         });
 
         onMounted(() => {
-            this.initializeTimer();
+            this.initializeTimer(); // This is now async but we don't need to await
             this.startClockTimer();
             this.startAnnouncementSlider();
             this.setupPersistentFrame();
@@ -122,33 +117,6 @@ export class ZohoDashboard extends Component {
         onWillUnmount(() => {
             this.cleanup();
         });
-    }
-
-    // ==================== USER INFO ====================
-    
-    /**
-     * Load user information from ORM since user service is not available
-     */
-    async loadUserInfo() {
-        try {
-            // Get current user ID from session
-            const result = await this.orm.call("res.users", "search_read", [
-                [["id", "=", (await this.orm.call("res.users", "search", [[]], { limit: 1 }))[0] || 1]],
-                ["id", "name", "login"]
-            ], { limit: 1 });
-            
-            if (result && result.length > 0) {
-                this.userId = result[0].id;
-            }
-        } catch (e) {
-            // Fallback - try to get from session info
-            try {
-                const sessionInfo = await this.orm.call("ir.http", "session_info", []);
-                this.userId = sessionInfo?.uid || 1;
-            } catch (e2) {
-                this.userId = 1;
-            }
-        }
     }
 
     // ==================== PERSISTENT FRAME SETUP ====================
@@ -178,9 +146,6 @@ export class ZohoDashboard extends Component {
 
     // ==================== DYNAMIC EMBEDDED VIEW SYSTEM ====================
 
-    /**
-     * Main entry point for loading any embedded view dynamically
-     */
     async loadEmbeddedView(resModel, title, domain = [], viewType = "list", context = {}) {
         this.embeddedState.loading = true;
         this.embeddedState.errorMessage = null;
@@ -195,7 +160,6 @@ export class ZohoDashboard extends Component {
         this.state.currentView = "embedded";
 
         try {
-            // Load menus for this model dynamically
             const menuInfo = await this.loadMenusForModel(resModel);
             if (menuInfo.rootMenu) {
                 this.embeddedState.currentApp = {
@@ -212,16 +176,13 @@ export class ZohoDashboard extends Component {
                 this.embeddedState.currentMenus = [];
             }
 
-            // Load available view types dynamically
             await this.loadAvailableViewTypes(resModel);
 
-            // Ensure we use an available view type
-            if (!this.embeddedState.availableViewTypes.includes(viewType)) {
+            if (! this.embeddedState.availableViewTypes.includes(viewType)) {
                 viewType = this.embeddedState.availableViewTypes[0] || "list";
                 this.embeddedState.currentViewType = viewType;
             }
 
-            // Build view props dynamically
             this.buildDynamicViewProps(resModel, viewType, domain, context);
 
         } catch (error) {
@@ -233,31 +194,28 @@ export class ZohoDashboard extends Component {
         }
     }
 
-    /**
-     * Build view props dynamically - handles all models and view types
-     */
     buildDynamicViewProps(resModel, viewType, domain = [], context = {}, resId = false) {
-        // Clean and prepare context
-        const fullContext = this.prepareContext(resModel, context);
-        
-        // Clean domain - remove any problematic entries
         const cleanDomain = this.cleanDomain(domain);
+        const cleanContext = this.cleanContext(context);
 
-        // Build base props
         const props = {
-            resModel: resModel,
+            resModel:  resModel,
             type: viewType,
-            domain: cleanDomain,
-            context: fullContext,
-            // Control panel configuration
-            display: {
+            domain:  cleanDomain,
+            context:  cleanContext,
+            // Enable full control panel with search
+            display:  {
                 controlPanel: {
                     "top-left": true,
-                    "top-right": true,
+                    "top-right":  true,
                     "bottom-left": true,
                     "bottom-right": true,
                 },
             },
+            // Critical:  Load search view and filters
+            loadIrFilters: true,
+            loadActionMenus: true,
+            searchViewId: false, // false = load default search view
             // Callbacks for navigation
             selectRecord: (resId, options) => this.handleSelectRecord(resModel, resId, options),
             createRecord: () => this.handleCreateRecord(resModel),
@@ -268,51 +226,58 @@ export class ZohoDashboard extends Component {
             props.resId = resId;
         }
 
-        // Increment key to force re-render
+        // For form views, disable search panel
+        if (viewType === "form") {
+            props.loadIrFilters = false;
+            props.searchViewId = undefined;
+        }
+
         this.embeddedState.viewKey++;
         this.embeddedState.viewProps = props;
         this.embeddedState.errorMessage = null;
     }
 
-    /**
-     * Prepare context with appropriate defaults based on model
-     */
-    prepareContext(resModel, baseContext = {}) {
-        const context = { ...baseContext };
-
-        // Add employee defaults for HR models
-        if (this.state.employee?.id) {
-            const hrModels = [
-                "hr.leave", "hr.leave.allocation", "hr.attendance", 
-                "hr.payslip", "hr.expense", "hr.expense.sheet",
-                "hr.contract", "hr.appraisal"
-            ];
-            if (hrModels.includes(resModel)) {
-                context.default_employee_id = this.state.employee.id;
+    cleanContext(context) {
+        if (! context) return {};
+        if (typeof context !== 'object' || Array.isArray(context)) return {};
+        
+        const cleanedContext = {};
+        
+        for (const [key, value] of Object.entries(context)) {
+            if (value === undefined || value === null) continue;
+            if (typeof value === 'string' && value.includes('uid')) continue;
+            if (typeof value === 'string' && value.includes('active_id')) continue;
+            
+            if (typeof value === 'boolean' || typeof value === 'number' || typeof value === 'string') {
+                cleanedContext[key] = value;
+            } else if (Array.isArray(value)) {
+                try {
+                    cleanedContext[key] = value.filter(v => 
+                        typeof v === 'boolean' || typeof v === 'number' || typeof v === 'string'
+                    );
+                } catch (e) {
+                    // Skip invalid arrays
+                }
             }
         }
-
-        // Add common context flags
-        context.dashboard_embedded = true;
-
-        return context;
+        
+        return cleanedContext;
     }
 
-    /**
-     * Clean domain - handle various domain formats safely
-     */
     cleanDomain(domain) {
         if (!domain) return [];
         if (! Array.isArray(domain)) return [];
         
         try {
-            // Filter out any invalid domain entries
             return domain.filter(item => {
-                if (Array.isArray(item)) {
-                    // Valid domain tuple should have 3 elements
-                    return item.length === 3;
+                if (Array.isArray(item) && item.length === 3) {
+                    const [field, operator, value] = item;
+                    if (typeof field !== 'string') return false;
+                    if (typeof value === 'string' && (value.includes('uid') || value.includes('active_id'))) {
+                        return false;
+                    }
+                    return true;
                 }
-                // Allow operators like '&', '|', '!'
                 if (typeof item === 'string' && ['&', '|', '!'].includes(item)) {
                     return true;
                 }
@@ -324,11 +289,7 @@ export class ZohoDashboard extends Component {
         }
     }
 
-    /**
-     * Handle record selection - navigate to form view
-     */
     async handleSelectRecord(resModel, resId, options = {}) {
-        // Get record name for breadcrumb
         let recordName = `#${resId}`;
         try {
             const records = await this.orm.read(resModel, [resId], ["display_name"]);
@@ -339,7 +300,6 @@ export class ZohoDashboard extends Component {
             // Use default name
         }
 
-        // Update breadcrumbs
         const currentBreadcrumbs = [...this.embeddedState.breadcrumbs];
         currentBreadcrumbs.push({
             name: recordName,
@@ -353,21 +313,10 @@ export class ZohoDashboard extends Component {
         this.embeddedState.currentResId = resId;
         this.embeddedState.currentViewType = "form";
 
-        // Build form view props
-        this.buildDynamicViewProps(
-            resModel,
-            "form",
-            [],
-            this.embeddedState.currentContext,
-            resId
-        );
+        this.buildDynamicViewProps(resModel, "form", [], this.embeddedState.currentContext, resId);
     }
 
-    /**
-     * Handle create record - open empty form
-     */
     handleCreateRecord(resModel) {
-        // Update breadcrumbs
         const currentBreadcrumbs = [...this.embeddedState.breadcrumbs];
         currentBreadcrumbs.push({
             name: _t("New"),
@@ -380,22 +329,19 @@ export class ZohoDashboard extends Component {
         this.embeddedState.currentResId = false;
         this.embeddedState.currentViewType = "form";
 
-        // Build form view props for new record
-        this.buildDynamicViewProps(
-            resModel,
-            "form",
-            [],
-            this.embeddedState.currentContext,
-            false
-        );
+        const context = { ...this.embeddedState.currentContext };
+        if (this.state.employee?.id) {
+            const hrModels = ["hr.leave", "hr.attendance", "hr.payslip", "hr.expense", "hr.contract"];
+            if (hrModels.includes(resModel)) {
+                context.default_employee_id = this.state.employee.id;
+            }
+        }
+
+        this.buildDynamicViewProps(resModel, "form", [], context, false);
     }
 
-    /**
-     * Dynamically find menus for any model
-     */
     async loadMenusForModel(resModel) {
         try {
-            // First, try to find an action for this model
             const actions = await this.orm.searchRead(
                 "ir.actions.act_window",
                 [["res_model", "=", resModel]],
@@ -404,17 +350,15 @@ export class ZohoDashboard extends Component {
             );
 
             if (actions.length > 0) {
-                // Find menu that links to this action
                 const actionId = actions[0].id;
                 const menus = await this.orm.searchRead(
                     "ir.ui.menu",
                     [["action", "=", `ir.actions.act_window,${actionId}`]],
                     ["id", "name", "parent_id"],
-                    { limit: 1 }
+                    { limit:  1 }
                 );
 
                 if (menus.length > 0) {
-                    // Find root menu
                     let currentMenu = menus[0];
                     while (currentMenu.parent_id) {
                         const parentMenus = await this.orm.searchRead(
@@ -430,7 +374,6 @@ export class ZohoDashboard extends Component {
                         }
                     }
 
-                    // Load children of root menu
                     const menuData = await this.orm.call(
                         "ir.ui.menu",
                         "get_menu_with_all_children",
@@ -447,16 +390,12 @@ export class ZohoDashboard extends Component {
             return { rootMenu: null, children: [] };
         } catch (error) {
             console.error("Failed to load menus for model:", error);
-            return { rootMenu: null, children: [] };
+            return { rootMenu:  null, children: [] };
         }
     }
 
-    /**
-     * Load available view types for any model
-     */
     async loadAvailableViewTypes(resModel) {
         try {
-            // Get views from ir.ui.view
             const views = await this.orm.searchRead(
                 "ir.ui.view",
                 [
@@ -467,18 +406,15 @@ export class ZohoDashboard extends Component {
                 { limit: 50 }
             );
 
-            // Normalize types (tree -> list)
             const typeSet = new Set();
             for (const view of views) {
                 const type = view.type === "tree" ? "list" : view.type;
                 typeSet.add(type);
             }
 
-            // Convert to array
             let availableTypes = Array.from(typeSet);
 
-            // Ensure at least list and form are available
-            if (!availableTypes.includes("list")) {
+            if (! availableTypes.includes("list")) {
                 availableTypes.unshift("list");
             }
             if (!availableTypes.includes("form")) {
@@ -492,25 +428,12 @@ export class ZohoDashboard extends Component {
         }
     }
 
-    /**
-     * Switch view type
-     */
     switchEmbeddedViewType(newType) {
         if (! this.embeddedState.currentResModel) return;
         if (this.embeddedState.currentViewType === newType) return;
 
-        // If in form view, go back to list first
         if (this.embeddedState.currentViewType === "form") {
             this.goBackFromForm();
-            if (newType === "list" || newType === "kanban") {
-                this.embeddedState.currentViewType = newType;
-                this.buildDynamicViewProps(
-                    this.embeddedState.currentResModel,
-                    newType,
-                    this.embeddedState.currentDomain,
-                    this.embeddedState.currentContext
-                );
-            }
             return;
         }
 
@@ -523,9 +446,6 @@ export class ZohoDashboard extends Component {
         );
     }
 
-    /**
-     * Go back from form view to list/kanban
-     */
     goBackFromForm() {
         if (this.embeddedState.breadcrumbs.length > 1) {
             const lastCrumb = this.embeddedState.breadcrumbs[this.embeddedState.breadcrumbs.length - 1];
@@ -538,21 +458,22 @@ export class ZohoDashboard extends Component {
             if (this.embeddedState.breadcrumbs.length > 0) {
                 this.embeddedState.viewTitle = this.embeddedState.breadcrumbs[this.embeddedState.breadcrumbs.length - 1].name;
             }
+
+            this.buildDynamicViewProps(
+                this.embeddedState.currentResModel,
+                previousType,
+                this.embeddedState.currentDomain,
+                this.embeddedState.currentContext
+            );
         }
     }
 
-    /**
-     * Check if view type is available
-     */
     isViewTypeAvailable(viewType) {
         return this.embeddedState.availableViewTypes.includes(viewType);
     }
 
-    /**
-     * Refresh current view
-     */
     refreshEmbeddedView() {
-        if (! this.embeddedState.currentResModel) return;
+        if (!this.embeddedState.currentResModel) return;
 
         this.embeddedState.loading = true;
         this.embeddedState.viewProps = null;
@@ -572,7 +493,7 @@ export class ZohoDashboard extends Component {
     // ==================== APP EMBEDDING ====================
 
     async loadEmbeddedApp(app) {
-        if (!app) return;
+        if (! app) return;
 
         this.embeddedState.loading = true;
         this.embeddedState.errorMessage = null;
@@ -621,13 +542,10 @@ export class ZohoDashboard extends Component {
         }
     }
 
-    /**
-     * Load action by ID and set up embedded view
-     */
     async loadActionById(actionId) {
         try {
             const numericId = this.extractActionId(actionId);
-            if (!numericId) {
+            if (! numericId) {
                 throw new Error("Invalid action ID");
             }
 
@@ -644,8 +562,8 @@ export class ZohoDashboard extends Component {
                 let viewType = viewModes[0].trim();
                 if (viewType === "tree") viewType = "list";
 
-                const domain = this.parseDomain(action.domain);
-                const context = this.parseContext(action.context);
+                const domain = this.parseDomainSafe(action.domain);
+                const context = this.parseContextSafe(action.context);
 
                 this.embeddedState.currentResModel = action.res_model;
                 this.embeddedState.currentViewType = viewType;
@@ -659,7 +577,7 @@ export class ZohoDashboard extends Component {
 
                 await this.loadAvailableViewTypes(action.res_model);
 
-                if (! this.embeddedState.availableViewTypes.includes(viewType)) {
+                if (!this.embeddedState.availableViewTypes.includes(viewType)) {
                     viewType = this.embeddedState.availableViewTypes[0] || "list";
                     this.embeddedState.currentViewType = viewType;
                 }
@@ -673,68 +591,24 @@ export class ZohoDashboard extends Component {
         }
     }
 
-    /**
-     * Parse domain from action - handle all formats
-     */
-    parseDomain(domainValue) {
+    parseDomainSafe(domainValue) {
         if (!domainValue) return [];
-        
         if (Array.isArray(domainValue)) {
             return this.cleanDomain(domainValue);
         }
-
-        if (typeof domainValue === 'string') {
-            try {
-                let cleaned = domainValue
-                    .replace(/'/g, '"')
-                    .replace(/True/g, 'true')
-                    .replace(/False/g, 'false')
-                    .replace(/None/g, 'null')
-                    .replace(/\buid\b/g, String(this.userId || 1));
-                
-                const parsed = JSON.parse(cleaned);
-                return this.cleanDomain(parsed);
-            } catch (e) {
-                console.warn("Could not parse domain:", domainValue);
-                return [];
-            }
-        }
-
+        // Skip string domains that contain dynamic expressions
         return [];
     }
 
-    /**
-     * Parse context from action
-     */
-    parseContext(contextValue) {
+    parseContextSafe(contextValue) {
         if (!contextValue) return {};
-        
         if (typeof contextValue === 'object' && ! Array.isArray(contextValue)) {
-            return contextValue;
+            return this.cleanContext(contextValue);
         }
-
-        if (typeof contextValue === 'string') {
-            try {
-                let cleaned = contextValue
-                    .replace(/'/g, '"')
-                    .replace(/True/g, 'true')
-                    .replace(/False/g, 'false')
-                    .replace(/None/g, 'null')
-                    .replace(/\buid\b/g, String(this.userId || 1));
-                
-                return JSON.parse(cleaned);
-            } catch (e) {
-                console.warn("Could not parse context:", contextValue);
-                return {};
-            }
-        }
-
+        // Skip string contexts that contain dynamic expressions
         return {};
     }
 
-    /**
-     * Extract numeric action ID
-     */
     extractActionId(actionId) {
         if (typeof actionId === 'number') {
             return actionId;
@@ -748,9 +622,6 @@ export class ZohoDashboard extends Component {
         return null;
     }
 
-    /**
-     * Handle menu click in embedded app
-     */
     async onEmbeddedMenuClick(menu) {
         if (!menu) return;
 
@@ -789,9 +660,6 @@ export class ZohoDashboard extends Component {
         }
     }
 
-    /**
-     * Find first menu with action recursively
-     */
     findFirstMenuWithAction(menus) {
         for (const menu of menus) {
             if (menu.action_id) return menu;
@@ -803,9 +671,6 @@ export class ZohoDashboard extends Component {
         return null;
     }
 
-    /**
-     * Close embedded view
-     */
     closeEmbeddedView() {
         this.embeddedState.isEmbeddedMode = false;
         this.embeddedState.currentApp = null;
@@ -826,9 +691,6 @@ export class ZohoDashboard extends Component {
         setTimeout(() => this.renderCharts(), 300);
     }
 
-    /**
-     * Handle breadcrumb navigation
-     */
     onBreadcrumbClick(crumb, index) {
         if (index === this.embeddedState.breadcrumbs.length - 1) {
             return;
@@ -911,7 +773,7 @@ export class ZohoDashboard extends Component {
             this.state.teamMembers = members.map(m => ({
                 id: m.id,
                 name: m.name,
-                job: m.job_id ? m.job_id[1] : "",
+                job:  m.job_id ? m.job_id[1] : "",
                 image: m.image_128,
                 status: m.attendance_state,
             }));
@@ -932,7 +794,7 @@ export class ZohoDashboard extends Component {
             );
 
             this.state.skills = skills.map(s => ({
-                id: s.id,
+                id:  s.id,
                 name: s.skill_id ? s.skill_id[1] : 'Unknown',
                 type: s.skill_type_id ? s.skill_type_id[1] : '',
                 progress: s.level_progress || 0,
@@ -980,28 +842,6 @@ export class ZohoDashboard extends Component {
         return this.state.announcements[this.state.currentAnnouncementIndex];
     }
 
-    initializeTimer() {
-        if (this.state.employee?.attendance_state === "checked_in") {
-            this.state.timerRunning = true;
-            this.startTimer();
-        }
-    }
-
-    startTimer() {
-        if (this.timerInterval) clearInterval(this.timerInterval);
-        this.timerInterval = setInterval(() => {
-            if (this.state.timerRunning) {
-                this.state.timerSeconds++;
-            }
-        }, 1000);
-    }
-
-    get formattedTimer() {
-        const hours = Math.floor(this.state.timerSeconds / 3600);
-        const minutes = Math.floor((this.state.timerSeconds % 3600) / 60);
-        const seconds = this.state.timerSeconds % 60;
-        return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
-    }
 
     // ==================== DATA LOADING ====================
 
@@ -1091,7 +931,7 @@ export class ZohoDashboard extends Component {
     }
 
     renderCharts() {
-        if (! this.state.chartLoaded || typeof Chart === "undefined") return;
+        if (!this.state.chartLoaded || typeof Chart === "undefined") return;
         setTimeout(() => {
             this.renderLeaveChart();
             if (this.state.isManager) {
@@ -1120,14 +960,14 @@ export class ZohoDashboard extends Component {
                         borderColor: "rgba(26, 115, 232, 1)",
                         borderWidth: 2,
                         fill: true,
-                        tension: 0.4,
+                        tension:  0.4,
                     }],
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: { legend: { display: true } },
-                    scales: { y: { beginAtZero: true } },
+                    scales: { y: { beginAtZero:  true } },
                 },
             });
         } catch (error) {
@@ -1214,7 +1054,7 @@ export class ZohoDashboard extends Component {
         let domain = [];
         if (this.state.employee?.id) {
             const employeeDomainModels = [
-                "hr.leave", "hr.attendance", "hr.payslip", 
+                "hr.leave", "hr.attendance", "hr.payslip",
                 "hr.expense", "hr.contract"
             ];
             if (employeeDomainModels.includes(item.model)) {
@@ -1263,26 +1103,77 @@ export class ZohoDashboard extends Component {
 
     // ==================== CHECK IN/OUT ====================
 
+    /**
+     * Handle attendance sign in/out - matches the working reference implementation
+     */
     async onCheckInOut() {
-        try {
-            await this.orm.call("hr.employee", "attendance_manual", [[]]);
+        if (!this.state.employee?.id) {
+            this.notification.add(_t("No employee record found"), { type: "warning" });
+            return;
+        }
 
-            if (this.state.employee?.attendance_state === "checked_out") {
-                this.state.employee.attendance_state = "checked_in";
-                this.state.timerRunning = true;
-                this.state.timerSeconds = 0;
-                this.startTimer();
-                this.notification.add(_t("Successfully Checked In"), { type: "success" });
-            } else if (this.state.employee) {
-                this.state.employee.attendance_state = "checked_out";
-                this.state.timerRunning = false;
-                if (this.timerInterval) clearInterval(this.timerInterval);
-                this.notification.add(_t("Successfully Checked Out"), { type: "success" });
+        // Toggle the attendance state first (optimistic update)
+        if (this.state.employee.attendance_state === 'checked_out' || ! this.state.employee.attendance_state) {
+            this.state.employee.attendance_state = 'checked_in';
+        } else {
+            this.state.employee.attendance_state = 'checked_out';
+        }
+
+        // Call the update attendance method
+        await this.updateAttendance();
+    }
+
+    /**
+     * Update attendance on the server - matches the working reference implementation
+     */
+    async updateAttendance() {
+        try {
+            // Call the attendance_manual method on the employee record
+            // Pass the employee ID as an array (this is how Odoo expects record IDs)
+            const result = await this.orm.call(
+                'hr.employee',
+                'attendance_manual',
+                [[this.state.employee.id]]
+            );
+
+            if (result !== false) {
+                const attendanceState = this.state.employee.attendance_state;
+                let message = '';
+
+                if (attendanceState === 'checked_in') {
+                    message = 'Checked In';
+                    this.state.timerRunning = true;
+                    this.state.timerSeconds = 0;
+                    this.startTimer();
+                } else if (attendanceState === 'checked_out') {
+                    message = 'Checked Out';
+                    this.state.timerRunning = false;
+                    if (this.timerInterval) {
+                        clearInterval(this.timerInterval);
+                        this.timerInterval = null;
+                    }
+                }
+
+                this.notification.add(_t("Successfully " + message), { type: "success" });
+                
+                // Refresh employee data to sync with server
+                await this.refreshEmployeeData();
+            }
+        } catch (error) {
+            console.error("Check in/out error:", error);
+
+            // Revert the state on error by refreshing from server
+            await this.refreshEmployeeData();
+
+            // Show user-friendly error message
+            let errorMsg = _t("Check in/out failed");
+            if (error.data?.message) {
+                errorMsg += ": " + error.data.message;
+            } else if (error.message) {
+                errorMsg += ": " + error.message;
             }
 
-            await this.refreshEmployeeData();
-        } catch (error) {
-            this.notification.add(_t("Check in/out failed"), { type: "danger" });
+            this.notification.add(errorMsg, { type:  "danger" });
         }
     }
 
@@ -1294,59 +1185,178 @@ export class ZohoDashboard extends Component {
                 this.state.attendance = empDetails[0].attendance_lines || [];
                 this.state.leaves = empDetails[0].leave_lines || [];
                 this.state.expenses = empDetails[0].expense_lines || [];
+
+                // Sync timer with attendance state
+                if (this.state.employee.attendance_state === "checked_in") {
+                    if (! this.state.timerRunning) {
+                        this.state.timerRunning = true;
+                        await this.initializeTimer();
+                    }
+                } else {
+                    this.state.timerRunning = false;
+                    if (this.timerInterval) {
+                        clearInterval(this.timerInterval);
+                        this.timerInterval = null;
+                    }
+                }
             }
         } catch (e) {
-            console.error("Failed to refresh:", e);
+            console.error("Failed to refresh employee data:", e);
         }
     }
 
-    // ==================== QUICK ACTIONS ====================
+    async initializeTimer() {
+        if (this.state.employee?.attendance_state === "checked_in") {
+            this.state.timerRunning = true;
+
+            // Try to get actual worked time from last attendance
+            try {
+                const openAttendance = await this.orm.searchRead(
+                    "hr.attendance",
+                    [
+                        ["employee_id", "=", this.state.employee.id],
+                        ["check_out", "=", false]
+                    ],
+                    ["check_in"],
+                    { limit: 1, order: "check_in desc" }
+                );
+
+                if (openAttendance.length > 0) {
+                    // Parse the check_in time - Odoo returns UTC time as string "YYYY-MM-DD HH:MM:SS"
+                    const checkInStr = openAttendance[0].check_in;
+                    // Convert Odoo datetime string to JavaScript Date
+                    const checkIn = new Date(checkInStr.replace(' ', 'T') + 'Z');
+                    const now = new Date();
+                    const diffSeconds = Math.floor((now - checkIn) / 1000);
+                    this.state.timerSeconds = Math.max(0, diffSeconds);
+                } else {
+                    this.state.timerSeconds = 0;
+                }
+            } catch (e) {
+                console.error("Failed to get check-in time:", e);
+                this.state.timerSeconds = 0;
+            }
+
+            this.startTimer();
+        }
+    }
+
+    startTimer() {
+        if (this.timerInterval) clearInterval(this.timerInterval);
+        this.timerInterval = setInterval(() => {
+            if (this.state.timerRunning) {
+                this.state.timerSeconds++;
+            }
+        }, 1000);
+    }
+
+    get formattedTimer() {
+        const hours = Math.floor(this.state.timerSeconds / 3600);
+        const minutes = Math.floor((this.state.timerSeconds % 3600) / 60);
+        const seconds = this.state.timerSeconds % 60;
+        return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+    }
+
+    // ==================== QUICK ACTIONS - WORKING ====================
+
+    async onQuickAdd() {
+        await this.addLeave();
+    }
 
     async addAttendance() {
-        await this.actionService.doAction({
-            name: _t("New Attendance"),
-            type: "ir.actions.act_window",
-            res_model: "hr.attendance",
-            view_mode: "form",
-            views: [[false, "form"]],
-            target: "new",
-            context: { default_employee_id: this.state.employee?.id },
-        });
+        if (!this.state.employee?.id) {
+            this.notification.add(_t("No employee record found"), { type: "warning" });
+            return;
+        }
+
+        try {
+            const action = await this.orm.call(
+                "ir.actions.act_window",
+                "search_read",
+                [[["res_model", "=", "hr.attendance"]]],
+                { fields: ["id"], limit: 1 }
+            );
+
+            await this.actionService.doAction({
+                type: "ir.actions.act_window",
+                name: _t("New Attendance"),
+                res_model: "hr.attendance",
+                views: [[false, "form"]],
+                target: "new",
+                context:  {
+                    default_employee_id: this.state.employee.id,
+                },
+            });
+        } catch (error) {
+            console.error("Failed to open attendance form:", error);
+            this.notification.add(_t("Failed to open form"), { type: "warning" });
+        }
     }
 
     async addLeave() {
-        await this.actionService.doAction({
-            name: _t("New Leave Request"),
-            type: "ir.actions.act_window",
-            res_model: "hr.leave",
-            view_mode: "form",
-            views: [[false, "form"]],
-            target: "new",
-            context: { default_employee_id: this.state.employee?.id },
-        });
+        if (!this.state.employee?.id) {
+            this.notification.add(_t("No employee record found"), { type: "warning" });
+            return;
+        }
+
+        try {
+            await this.actionService.doAction({
+                type: "ir.actions.act_window",
+                name: _t("New Time Off"),
+                res_model:  "hr.leave",
+                views: [[false, "form"]],
+                target: "new",
+                context: {
+                    default_employee_id: this.state.employee.id,
+                },
+            });
+        } catch (error) {
+            console.error("Failed to open leave form:", error);
+            this.notification.add(_t("Failed to open form"), { type: "warning" });
+        }
     }
 
     async addExpense() {
-        await this.actionService.doAction({
-            name: _t("New Expense"),
-            type: "ir.actions.act_window",
-            res_model: "hr.expense",
-            view_mode: "form",
-            views: [[false, "form"]],
-            target: "new",
-            context: { default_employee_id: this.state.employee?.id },
-        });
+        if (!this.state.employee?.id) {
+            this.notification.add(_t("No employee record found"), { type: "warning" });
+            return;
+        }
+
+        try {
+            await this.actionService.doAction({
+                type: "ir.actions.act_window",
+                name: _t("New Expense"),
+                res_model: "hr.expense",
+                views: [[false, "form"]],
+                target: "new",
+                context: {
+                    default_employee_id:  this.state.employee.id,
+                },
+            });
+        } catch (error) {
+            console.error("Failed to open expense form:", error);
+            this.notification.add(_t("Failed to open form"), { type: "warning" });
+        }
     }
 
     async addProject() {
-        await this.actionService.doAction({
-            name: _t("New Task"),
-            type: "ir.actions.act_window",
-            res_model: "project.task",
-            view_mode: "form",
-            views: [[false, "form"]],
-            target: "new",
-        });
+        try {
+            await this.actionService.doAction({
+                type: "ir.actions.act_window",
+                name: _t("New Task"),
+                res_model: "project.task",
+                views: [[false, "form"]],
+                target: "new",
+                context: {},
+            });
+        } catch (error) {
+            console.error("Failed to open task form:", error);
+            this.notification.add(_t("Failed to open form"), { type: "warning" });
+        }
+    }
+
+    toggleFab() {
+        this.embeddedState.fabOpen = !this.embeddedState.fabOpen;
     }
 
     // ==================== STAT CARD CLICKS ====================
@@ -1384,11 +1394,10 @@ export class ZohoDashboard extends Component {
     async openProfile() {
         if (this.state.employee?.id) {
             await this.actionService.doAction({
-                name: _t("My Profile"),
                 type: "ir.actions.act_window",
-                res_model: "hr.employee",
+                name: _t("My Profile"),
+                res_model:  "hr.employee",
                 res_id: this.state.employee.id,
-                view_mode: "form",
                 views: [[false, "form"]],
                 target: "new",
             });
@@ -1428,11 +1437,10 @@ export class ZohoDashboard extends Component {
 
     async openTeamMember(member) {
         await this.actionService.doAction({
-            name: member.name,
             type: "ir.actions.act_window",
+            name: member.name,
             res_model: "hr.employee",
             res_id: member.id,
-            view_mode: "form",
             views: [[false, "form"]],
             target: "new",
         });
@@ -1442,11 +1450,10 @@ export class ZohoDashboard extends Component {
 
     async onAttendanceRowClick(att) {
         await this.actionService.doAction({
-            name: _t("Attendance"),
             type: "ir.actions.act_window",
+            name: _t("Attendance"),
             res_model: "hr.attendance",
             res_id: att.id,
-            view_mode: "form",
             views: [[false, "form"]],
             target: "new",
         });
@@ -1454,11 +1461,10 @@ export class ZohoDashboard extends Component {
 
     async onLeaveRowClick(leave) {
         await this.actionService.doAction({
-            name: _t("Leave Request"),
             type: "ir.actions.act_window",
+            name: _t("Leave Request"),
             res_model: "hr.leave",
             res_id: leave.id,
-            view_mode: "form",
             views: [[false, "form"]],
             target: "new",
         });
@@ -1466,28 +1472,25 @@ export class ZohoDashboard extends Component {
 
     async onExpenseRowClick(exp) {
         await this.actionService.doAction({
-            name: _t("Expense"),
             type: "ir.actions.act_window",
+            name: _t("Expense"),
             res_model: "hr.expense",
             res_id: exp.id,
-            view_mode: "form",
             views: [[false, "form"]],
-            target: "new",
+            target:  "new",
         });
     }
 
     async onProjectRowClick(proj) {
         await this.actionService.doAction({
-            name: _t("Task"),
             type: "ir.actions.act_window",
+            name:  _t("Task"),
             res_model: "project.task",
             res_id: proj.id,
-            view_mode: "form",
             views: [[false, "form"]],
             target: "new",
         });
     }
 }
 
-// Register the dashboard action
 registry.category("actions").add("hr_dashboard_spa", ZohoDashboard);
