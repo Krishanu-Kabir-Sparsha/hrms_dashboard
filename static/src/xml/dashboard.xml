@@ -20,7 +20,7 @@
                         <t t-foreach="sidebarItems" t-as="item" t-key="item.id">
                             <div class="zoho_nav_item"
                                  t-att-class="{
-                                     'is-active': (! embeddedState.isEmbeddedMode and state.currentView === item.id) ||
+                                     'is-active': (!embeddedState.isEmbeddedMode and state.currentView === item.id) ||
                                                   (embeddedState.isEmbeddedMode and item.id === 'operations')
                                  }"
                                  t-on-click="() => this.onSidebarClick(item)"
@@ -37,7 +37,7 @@
                     <!-- PERSISTENT TOP HEADER -->
                     <header class="zoho_persistent_header">
                         <div class="header_left">
-                            <t t-if="! embeddedState.isEmbeddedMode">
+                            <t t-if="!embeddedState.isEmbeddedMode">
                                 <div class="header_tabs">
                                     <t t-foreach="mainTabs" t-as="tab" t-key="tab.id">
                                         <button class="header_tab"
@@ -114,7 +114,7 @@
                     </t>
 
                     <!-- SIMPLE TITLE BAR (When embedded without menus) -->
-                    <t t-if="embeddedState.isEmbeddedMode and ! embeddedState.currentMenus.length">
+                    <t t-if="embeddedState.isEmbeddedMode and !embeddedState.currentMenus.length">
                         <div class="zoho_embedded_titlebar">
                             <h3 t-esc="embeddedState.viewTitle"/>
                             <div class="titlebar_actions">
@@ -142,7 +142,7 @@
                         
                         <!-- ==================== EMBEDDED VIEW ==================== -->
                         <t t-if="embeddedState.isEmbeddedMode">
-                            <div class="zoho_embedded_view_container">
+                            <div class="zoho_embedded_view_container" t-ref="embeddedContainer">
                                 <t t-if="embeddedState.loading">
                                     <div class="embedded_loader">
                                         <div class="zoho_spinner"/>
@@ -156,7 +156,28 @@
                                         <button class="btn_primary" t-on-click="closeEmbeddedView">Return to Dashboard</button>
                                     </div>
                                 </t>
-                                <t t-elif="embeddedState.viewProps">
+                                <t t-elif="embeddedState.isClientAction">
+                                    <!-- Client Action - Show friendly message with open in full page option -->
+                                    <div class="embedded_client_action_notice">
+                                        <div class="client_action_icon">🚀</div>
+                                        <h3 t-esc="embeddedState.clientActionName or 'Application'"/>
+                                        <p class="client_action_description">
+                                            This application works best in full-page mode for the complete experience.
+                                        </p>
+                                        <div class="client_action_buttons">
+                                            <button class="btn_primary btn_large" t-on-click="openInFullPage">
+                                                🔗 Open in Full Page
+                                            </button>
+                                            <button class="btn_outline" t-on-click="closeEmbeddedView">
+                                                ← Back to Dashboard
+                                            </button>
+                                        </div>
+                                        <p class="client_action_hint">
+                                            <small>Tip: Standard views (lists, forms, kanban) are embedded directly.</small>
+                                        </p>
+                                    </div>
+                                </t>
+                                <t t-elif="embeddedState.viewProps and embeddedState.viewProps.resModel">
                                     <div class="embedded_view_wrapper">
                                         <View t-props="embeddedState.viewProps" t-key="embeddedState.viewKey"/>
                                     </div>
@@ -172,7 +193,7 @@
                         </t>
 
                         <!-- ==================== HOME VIEW ==================== -->
-                        <t t-if="state.currentView === 'home' and ! embeddedState.isEmbeddedMode">
+                        <t t-if="state.currentView === 'home' and !embeddedState.isEmbeddedMode">
                             <div class="zoho_home_view">
                                 <!-- Employee Profile Panel -->
                                 <aside class="zoho_profile_panel">
@@ -302,7 +323,7 @@
                                     </t>
 
                                     <div class="welcome_section">
-                                        <h2>Welcome back, <t t-if="state.employee" t-esc="state.employee.name.split(' ')[0]"/><t t-else="">User</t>!  👋</h2>
+                                        <h2>Welcome back, <t t-if="state.employee" t-esc="state.employee.name.split(' ')[0]"/><t t-else="">User</t>! 👋</h2>
                                         <p>Here's what's happening today</p>
                                     </div>
 
@@ -420,7 +441,7 @@
                                                                 <td t-esc="att.worked_hours"/>
                                                             </tr>
                                                         </t>
-                                                        <t t-if="! state.attendance.length">
+                                                        <t t-if="!state.attendance.length">
                                                             <tr><td colspan="4" class="empty_cell">No records found</td></tr>
                                                         </t>
                                                     </tbody>
@@ -503,7 +524,7 @@
                                                                 <td><span class="status_badge" t-att-style="'background:' + exp.color" t-esc="exp.state"/></td>
                                                             </tr>
                                                         </t>
-                                                        <t t-if="! state.expenses.length">
+                                                        <t t-if="!state.expenses.length">
                                                             <tr><td colspan="4" class="empty_cell">No records found</td></tr>
                                                         </t>
                                                     </tbody>
@@ -632,7 +653,7 @@
                         </t>
 
                         <!-- ==================== TEAM VIEW ==================== -->
-                        <t t-if="state.currentView === 'team' and ! embeddedState.isEmbeddedMode">
+                        <t t-if="state.currentView === 'team' and !embeddedState.isEmbeddedMode">
                             <div class="zoho_page_content">
                                 <div class="page_header">
                                     <h2>Team Overview</h2>

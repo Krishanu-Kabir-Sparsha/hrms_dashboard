@@ -1,11 +1,13 @@
 /** @odoo-module **/
 
 import { registry } from "@web/core/registry";
-import { Component, useState, onMounted, onWillStart, onWillUnmount, useRef } from "@odoo/owl";
+import { Component, useState, onMounted, onWillStart, onWillUnmount, useRef, useEffect, useSubEnv, xml, mount } from "@odoo/owl";
 import { useService } from "@web/core/utils/hooks";
 import { _t } from "@web/core/l10n/translation";
 import { loadJS } from "@web/core/assets";
 import { View } from "@web/views/view";
+import { useOwnedDialogs } from "@web/core/utils/hooks";
+import { standardActionServiceProps } from "@web/webclient/actions/action_service";
 
 export class ZohoDashboard extends Component {
     static template = "hrms_dashboard.ZohoDashboard";
@@ -20,6 +22,7 @@ export class ZohoDashboard extends Component {
 
         // Refs
         this.dashboardWrapperRef = useRef("dashboardWrapper");
+        this.clientActionContainerRef = useRef("clientActionContainer");
 
         // Embedded State
         this.embeddedState = useState({
@@ -39,6 +42,11 @@ export class ZohoDashboard extends Component {
             viewKey: 0,
             errorMessage: null,
             fabOpen: false,
+            // Action handling properties
+            currentActionId: null,
+            isClientAction: false,
+            clientActionTag: null,
+            clientActionName: null,
         });
 
         // Local State
@@ -105,14 +113,30 @@ export class ZohoDashboard extends Component {
         });
 
         onMounted(() => {
-            this.initializeTimer(); // This is now async but we don't need to await
+            this.initializeTimer();
             this.startClockTimer();
             this.startAnnouncementSlider();
             this.setupPersistentFrame();
             if (this.state.chartLoaded) {
                 this.renderCharts();
             }
+            
+            // Check if we need to render a pending action
+            // this.checkAndRenderPendingAction();
         });
+
+        // Use effect to watch for pending actions
+        // Use effect to watch for embedded state changes
+        useEffect(
+            () => {
+                // This runs when viewKey changes
+                // No cleanup needed, so don't return anything
+                if (this.embeddedState. isEmbeddedMode && ! this.embeddedState.loading) {
+                    // View is ready, no additional action needed
+                }
+            },
+            () => [this.embeddedState.viewKey]
+        );
 
         onWillUnmount(() => {
             this.cleanup();
@@ -127,9 +151,26 @@ export class ZohoDashboard extends Component {
     }
 
     cleanup() {
-        if (this.timerInterval) clearInterval(this.timerInterval);
-        if (this.clockInterval) clearInterval(this.clockInterval);
-        if (this.announcementInterval) clearInterval(this.announcementInterval);
+        // Reset client action state safely
+        if (this.embeddedState) {
+            this.embeddedState.isClientAction = false;
+            this.embeddedState.clientActionTag = null;
+            this.embeddedState.clientActionName = null;
+        }
+        
+        if (this.timerInterval) {
+            clearInterval(this.timerInterval);
+            this.timerInterval = null;
+        }
+        if (this.clockInterval) {
+            clearInterval(this.clockInterval);
+            this.clockInterval = null;
+        }
+        if (this.announcementInterval) {
+            clearInterval(this.announcementInterval);
+            this.announcementInterval = null;
+        }
+        
         document.body.classList.remove('zoho-dashboard-active');
         this.showOdooNavbar();
     }
@@ -178,7 +219,7 @@ export class ZohoDashboard extends Component {
 
             await this.loadAvailableViewTypes(resModel);
 
-            if (! this.embeddedState.availableViewTypes.includes(viewType)) {
+            if (!this.embeddedState.availableViewTypes.includes(viewType)) {
                 viewType = this.embeddedState.availableViewTypes[0] || "list";
                 this.embeddedState.currentViewType = viewType;
             }
@@ -198,28 +239,34 @@ export class ZohoDashboard extends Component {
         const cleanDomain = this.cleanDomain(domain);
         const cleanContext = this.cleanContext(context);
 
+        // Reset action service flags
+        this.embeddedState.useActionService = false;
+        this.embeddedState.pendingAction = null;
+
         const props = {
-            resModel:  resModel,
+            resModel: resModel,
             type: viewType,
             domain:  cleanDomain,
             context:  cleanContext,
-            // Enable full control panel with search
             display:  {
                 controlPanel: {
                     "top-left": true,
-                    "top-right":  true,
+                    "top-right": true,
                     "bottom-left": true,
                     "bottom-right": true,
                 },
             },
-            // Critical:  Load search view and filters
             loadIrFilters: true,
             loadActionMenus: true,
-            searchViewId: false, // false = load default search view
-            // Callbacks for navigation
+            searchViewId: false,
             selectRecord: (resId, options) => this.handleSelectRecord(resModel, resId, options),
             createRecord: () => this.handleCreateRecord(resModel),
         };
+
+        // Add action ID if available for proper action context
+        if (this.embeddedState.currentActionId) {
+            props.actionId = this.embeddedState.currentActionId;
+        }
 
         // For form views, add resId
         if (viewType === "form" && resId) {
@@ -238,7 +285,7 @@ export class ZohoDashboard extends Component {
     }
 
     cleanContext(context) {
-        if (! context) return {};
+        if (!context) return {};
         if (typeof context !== 'object' || Array.isArray(context)) return {};
         
         const cleanedContext = {};
@@ -266,7 +313,7 @@ export class ZohoDashboard extends Component {
 
     cleanDomain(domain) {
         if (!domain) return [];
-        if (! Array.isArray(domain)) return [];
+        if (!Array.isArray(domain)) return [];
         
         try {
             return domain.filter(item => {
@@ -414,7 +461,7 @@ export class ZohoDashboard extends Component {
 
             let availableTypes = Array.from(typeSet);
 
-            if (! availableTypes.includes("list")) {
+            if (!availableTypes.includes("list")) {
                 availableTypes.unshift("list");
             }
             if (!availableTypes.includes("form")) {
@@ -429,7 +476,7 @@ export class ZohoDashboard extends Component {
     }
 
     switchEmbeddedViewType(newType) {
-        if (! this.embeddedState.currentResModel) return;
+        if (!this.embeddedState.currentResModel) return;
         if (this.embeddedState.currentViewType === newType) return;
 
         if (this.embeddedState.currentViewType === "form") {
@@ -493,7 +540,7 @@ export class ZohoDashboard extends Component {
     // ==================== APP EMBEDDING ====================
 
     async loadEmbeddedApp(app) {
-        if (! app) return;
+        if (!app) return;
 
         this.embeddedState.loading = true;
         this.embeddedState.errorMessage = null;
@@ -515,7 +562,7 @@ export class ZohoDashboard extends Component {
             let actionId = menuData?.action_id;
             let actionMenu = null;
 
-            if (! actionId && menuData?.children?.length) {
+            if (!actionId && menuData?.children?.length) {
                 actionMenu = this.findFirstMenuWithAction(menuData.children);
                 if (actionMenu) {
                     actionId = actionMenu.action_id;
@@ -545,44 +592,98 @@ export class ZohoDashboard extends Component {
     async loadActionById(actionId) {
         try {
             const numericId = this.extractActionId(actionId);
-            if (! numericId) {
+            if (!numericId) {
                 throw new Error("Invalid action ID");
             }
 
-            const actionData = await this.orm.call(
-                "ir.actions.act_window",
-                "read",
-                [[numericId]],
-                { fields: ["res_model", "view_mode", "domain", "context", "name", "views"] }
+            // First, get the action type
+            const [actionInfo] = await this.orm.searchRead(
+                "ir.actions.actions",
+                [["id", "=", numericId]],
+                ["type"],
+                { limit: 1 }
             );
 
-            if (actionData && actionData.length) {
-                const action = actionData[0];
-                const viewModes = (action.view_mode || "list").split(",");
-                let viewType = viewModes[0].trim();
-                if (viewType === "tree") viewType = "list";
+            if (!actionInfo) {
+                throw new Error("Action not found");
+            }
 
-                const domain = this.parseDomainSafe(action.domain);
-                const context = this.parseContextSafe(action.context);
+            const actionType = actionInfo.type;
 
-                this.embeddedState.currentResModel = action.res_model;
-                this.embeddedState.currentViewType = viewType;
-                this.embeddedState.currentDomain = domain;
-                this.embeddedState.currentContext = context;
-                this.embeddedState.currentResId = false;
+            // Reset client action state
+            this.embeddedState.isClientAction = false;
+            this.embeddedState.clientActionComponent = null;
+            this.embeddedState.clientActionProps = null;
+            this.unmountClientAction();
 
-                if (action.name) {
-                    this.embeddedState.viewTitle = action.name;
-                }
+            // Handle different action types
+            if (actionType === "ir.actions.act_window") {
+                // Standard window action - use View component
+                const actionData = await this.orm.call(
+                    "ir.actions.act_window",
+                    "read",
+                    [[numericId]],
+                    { fields: ["res_model", "view_mode", "domain", "context", "name", "views", "target", "res_id"] }
+                );
 
-                await this.loadAvailableViewTypes(action.res_model);
+                if (actionData && actionData.length) {
+                    const action = actionData[0];
+                    const viewModes = (action.view_mode || "list").split(",");
+                    let viewType = viewModes[0].trim();
+                    if (viewType === "tree") viewType = "list";
 
-                if (!this.embeddedState.availableViewTypes.includes(viewType)) {
-                    viewType = this.embeddedState.availableViewTypes[0] || "list";
+                    const domain = this.parseDomainSafe(action.domain);
+                    const context = this.parseContextSafe(action.context);
+
+                    this.embeddedState.currentResModel = action.res_model;
                     this.embeddedState.currentViewType = viewType;
-                }
+                    this.embeddedState.currentDomain = domain;
+                    this.embeddedState.currentContext = context;
+                    this.embeddedState.currentResId = action.res_id || false;
+                    this.embeddedState.currentActionId = numericId;
 
-                this.buildDynamicViewProps(action.res_model, viewType, domain, context);
+                    if (action.name) {
+                        this.embeddedState.viewTitle = action.name;
+                    }
+
+                    await this.loadAvailableViewTypes(action.res_model);
+
+                    if (!this.embeddedState.availableViewTypes.includes(viewType)) {
+                        viewType = this.embeddedState.availableViewTypes[0] || "list";
+                        this.embeddedState.currentViewType = viewType;
+                    }
+
+                    this.buildDynamicViewProps(action.res_model, viewType, domain, context, action.res_id || false);
+                }
+            } else if (actionType === "ir.actions.client") {
+                // Client action - dynamically load and mount
+                await this.loadClientAction(numericId);
+            } else if (actionType === "ir.actions.act_url") {
+                // URL action - open in new tab
+                const [urlAction] = await this.orm.call(
+                    "ir.actions.act_url",
+                    "read",
+                    [[numericId]],
+                    { fields: ["url", "target"] }
+                );
+                if (urlAction) {
+                    if (urlAction.target === "self") {
+                        window.location.href = urlAction.url;
+                    } else {
+                        window.open(urlAction.url, "_blank");
+                        this.notification.add(_t("Link opened in new tab"), { type: "info" });
+                    }
+                }
+            } else if (actionType === "ir.actions.server") {
+                // Server action - execute and handle result
+                await this.executeServerAction(numericId);
+            } else if (actionType === "ir.actions.report") {
+                // Report action - open report
+                await this.executeReportAction(numericId);
+            } else {
+                // Unknown action type
+                this.embeddedState.errorMessage = `Action type "${actionType}" is not supported in embedded mode.`;
+                this.embeddedState.currentActionId = numericId;
             }
 
         } catch (error) {
@@ -590,6 +691,217 @@ export class ZohoDashboard extends Component {
             throw error;
         }
     }
+
+    /**
+     * Execute a server action
+     */
+    async executeServerAction(actionId) {
+        try {
+            const result = await this.orm.call(
+                "ir.actions.server",
+                "run",
+                [[actionId]],
+                { context: this.embeddedState.currentContext }
+            );
+
+            // If the server action returns another action, execute it
+            if (result && typeof result === 'object' && result.type) {
+                if (result.type === 'ir.actions.act_window') {
+                    // Handle window action result
+                    const viewModes = (result.view_mode || "list").split(",");
+                    let viewType = viewModes[0].trim();
+                    if (viewType === "tree") viewType = "list";
+
+                    this.embeddedState.currentResModel = result.res_model;
+                    this.embeddedState.currentViewType = viewType;
+                    this.embeddedState.currentDomain = result.domain || [];
+                    this.embeddedState.currentContext = result.context || {};
+                    this.embeddedState.currentResId = result.res_id || false;
+
+                    if (result.name) {
+                        this.embeddedState.viewTitle = result.name;
+                    }
+
+                    await this.loadAvailableViewTypes(result.res_model);
+                    this.buildDynamicViewProps(result.res_model, viewType, result.domain || [], result.context || {}, result.res_id || false);
+                } else if (result.type === 'ir.actions.client') {
+                    await this.loadClientAction(result.id || actionId);
+                }
+            } else {
+                // Server action completed without returning an action
+                this.notification.add(_t("Action completed"), { type: "success" });
+            }
+        } catch (error) {
+            console.error("Failed to execute server action:", error);
+            this.notification.add(_t("Failed to execute action"), { type: "danger" });
+        }
+    }
+
+    /**
+     * Execute a report action
+     */
+    async executeReportAction(actionId) {
+        try {
+            const [reportAction] = await this.orm.call(
+                "ir.actions.report",
+                "read",
+                [[actionId]],
+                { fields: ["report_type", "report_name", "name"] }
+            );
+
+            if (reportAction) {
+                // Open report in new tab
+                const reportUrl = `/report/${reportAction.report_type}/${reportAction.report_name}`;
+                window.open(reportUrl, "_blank");
+                this.notification.add(_t("Report opened in new tab"), { type: "info" });
+            }
+        } catch (error) {
+            console.error("Failed to execute report action:", error);
+            this.notification.add(_t("Failed to open report"), { type: "danger" });
+        }
+    }
+
+    // ==================== CLIENT ACTION EMBEDDING ====================
+
+    /**
+     * Load and handle a client action - redirect to the View component approach
+     * or open in full page for complex client actions
+     */
+    async loadClientAction(actionId) {
+        try {
+            const [clientAction] = await this.orm.call(
+                "ir.actions.client",
+                "read",
+                [[actionId]],
+                { fields: ["tag", "name", "params", "context", "target"] }
+            );
+
+            if (!clientAction) {
+                throw new Error("Client action not found");
+            }
+
+            this.embeddedState.viewTitle = clientAction.name || "Application";
+            this.embeddedState.currentActionId = actionId;
+
+            // List of client actions that can potentially work embedded
+            // Most client actions in Odoo require full page context
+            const tag = clientAction.tag;
+            
+            // Check if this client action has a res_model we can fall back to
+            const params = clientAction.params || {};
+            
+            // For client actions, we'll show a friendly message with option to open in full page
+            // This is because most Odoo client actions (discuss, crm pipeline dashboards, etc.)
+            // are tightly integrated with Odoo's action service and require full page context
+            this.embeddedState.isClientAction = true;
+            this.embeddedState.clientActionTag = tag;
+            this.embeddedState.clientActionName = clientAction.name;
+            this.embeddedState.viewProps = null;
+            this.embeddedState.currentResModel = null;
+            this.embeddedState.errorMessage = null;
+            this.embeddedState.viewKey++;
+
+        } catch (error) {
+            console.error("Failed to load client action:", error);
+            this.embeddedState.errorMessage = error.message || "Failed to load application";
+            this.embeddedState.isClientAction = false;
+        }
+    }
+
+    
+
+    /**
+     * Open current action in full page mode (for client actions that can't be embedded)
+     */
+    openInFullPage() {
+        if (this.embeddedState.currentActionId) {
+            window.location.href = `/web#action=${this.embeddedState.currentActionId}`;
+        } else if (this.embeddedState.currentApp?.id) {
+            window.location.href = `/web#menu_id=${this.embeddedState.currentApp.id}`;
+        }
+    }
+
+    /**
+     * Unmount any client action resources (simplified - no longer mounting components)
+     */
+    unmountClientAction() {
+        // Reset client action state
+        this.embeddedState.isClientAction = false;
+        this.embeddedState.clientActionTag = null;
+        this.embeddedState.clientActionName = null;
+    }
+
+    /**
+     * Execute a generic action via action service
+     */
+    // async executeGenericAction(actionId, actionType) {
+    //     try {
+    //         this.embeddedState.useActionService = true;
+    //         this.embeddedState.pendingAction = {
+    //             type: actionType,
+    //             id: actionId,
+    //         };
+    //         this.embeddedState.viewProps = {
+    //             type: "genericAction",
+    //             actionId: actionId,
+    //             actionType: actionType,
+    //         };
+    //         this.embeddedState.viewKey++;
+    //     } catch (error) {
+    //         console.error("Failed to execute generic action:", error);
+    //         throw error;
+    //     }
+    // }
+
+    /**
+     * Render pending action in the action container
+     */
+    // async renderPendingAction() {
+    //     if (!this.embeddedState.useActionService || !this.embeddedState.pendingAction) {
+    //         return;
+    //     }
+
+    //     const containerEl = this.actionContainerRef.el;
+    //     if (!containerEl) {
+    //         return;
+    //     }
+
+    //     try {
+    //         const action = this.embeddedState.pendingAction;
+            
+    //         // Clear container
+    //         containerEl.innerHTML = '';
+            
+    //         // Execute the action using Odoo's action service
+    //         // This will render the action inside our container
+    //         await this.actionService.doAction(action, {
+    //             clearBreadcrumbs: true,
+    //             stackPosition: "replaceCurrentAction",
+    //             additionalContext: action.context || {},
+    //             onClose: () => {
+    //                 // When action is closed, go back
+    //                 this.goBackFromForm();
+    //             },
+    //         });
+
+    //     } catch (error) {
+    //         console.error("Failed to render action:", error);
+    //         this.embeddedState.errorMessage = "Failed to load this view:  " + (error.message || "Unknown error");
+    //         this.embeddedState.useActionService = false;
+    //         this.embeddedState.pendingAction = null;
+    //     }
+    // }
+
+    /**
+     * Check and render pending action if needed
+     */
+    // checkAndRenderPendingAction() {
+    //     if (this.embeddedState.useActionService && this.embeddedState.pendingAction) {
+    //         // Small delay to ensure DOM is ready
+    //         setTimeout(() => this.renderPendingAction(), 100);
+    //     }
+    // }
+
 
     parseDomainSafe(domainValue) {
         if (!domainValue) return [];
@@ -602,7 +914,7 @@ export class ZohoDashboard extends Component {
 
     parseContextSafe(contextValue) {
         if (!contextValue) return {};
-        if (typeof contextValue === 'object' && ! Array.isArray(contextValue)) {
+        if (typeof contextValue === 'object' && !Array.isArray(contextValue)) {
             return this.cleanContext(contextValue);
         }
         // Skip string contexts that contain dynamic expressions
@@ -672,6 +984,9 @@ export class ZohoDashboard extends Component {
     }
 
     closeEmbeddedView() {
+        // Reset client action state
+        this.unmountClientAction();
+
         this.embeddedState.isEmbeddedMode = false;
         this.embeddedState.currentApp = null;
         this.embeddedState.currentMenus = [];
@@ -685,6 +1000,11 @@ export class ZohoDashboard extends Component {
         this.embeddedState.availableViewTypes = [];
         this.embeddedState.viewProps = null;
         this.embeddedState.errorMessage = null;
+        this.embeddedState.currentActionId = null;
+        this.embeddedState.isClientAction = false;
+        this.embeddedState.clientActionTag = null;
+        this.embeddedState.clientActionName = null;
+        
         this.state.currentView = "home";
         this.state.activeMainTab = "myspace";
 
@@ -746,7 +1066,7 @@ export class ZohoDashboard extends Component {
 
             this.state.leaveBalances = allocations.map(a => ({
                 id: a.id,
-                type: a.holiday_status_id ?  a.holiday_status_id[1] : 'Unknown',
+                type: a.holiday_status_id ? a.holiday_status_id[1] : 'Unknown',
                 allocated: a.number_of_days || 0,
                 taken: a.leaves_taken || 0,
                 remaining: (a.number_of_days || 0) - (a.leaves_taken || 0),
@@ -838,7 +1158,7 @@ export class ZohoDashboard extends Component {
     }
 
     get currentAnnouncement() {
-        if (! this.state.announcements.length) return null;
+        if (!this.state.announcements.length) return null;
         return this.state.announcements[this.state.currentAnnouncementIndex];
     }
 
@@ -896,7 +1216,7 @@ export class ZohoDashboard extends Component {
 
             await this.loadChartData();
 
-            if (this.state.isManager && ! this.contentTabs.find(t => t.id === 'manager')) {
+            if (this.state.isManager && !this.contentTabs.find(t => t.id === 'manager')) {
                 this.contentTabs.push({ id: "manager", label: "Manager View" });
             }
 
@@ -1088,7 +1408,7 @@ export class ZohoDashboard extends Component {
     // ==================== APP CLICK ====================
 
     async onAppClick(app) {
-        if (! app) return;
+        if (!app) return;
 
         const appName = (app.name || "").toLowerCase();
 
@@ -1113,7 +1433,7 @@ export class ZohoDashboard extends Component {
         }
 
         // Toggle the attendance state first (optimistic update)
-        if (this.state.employee.attendance_state === 'checked_out' || ! this.state.employee.attendance_state) {
+        if (this.state.employee.attendance_state === 'checked_out' || !this.state.employee.attendance_state) {
             this.state.employee.attendance_state = 'checked_in';
         } else {
             this.state.employee.attendance_state = 'checked_out';
@@ -1188,7 +1508,7 @@ export class ZohoDashboard extends Component {
 
                 // Sync timer with attendance state
                 if (this.state.employee.attendance_state === "checked_in") {
-                    if (! this.state.timerRunning) {
+                    if (!this.state.timerRunning) {
                         this.state.timerRunning = true;
                         await this.initializeTimer();
                     }

@@ -201,6 +201,118 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
     min-height: 0; /* Important for flex children to scroll */
 }
 
+/* Action container for client actions */
+.embedded_action_container {
+    position: absolute;
+    inset: 0;
+    overflow: auto;
+    background: var(--bg-card);
+}
+
+.embedded_action_container .o_action_manager {
+    height: 100%;
+}
+
+.embedded_action_container .o_action {
+    height: 100%;
+}
+
+/* ============ CLIENT ACTION NOTICE ============ */
+
+.embedded_client_action_notice {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    padding: 60px 40px;
+    text-align: center;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+}
+
+.client_action_icon {
+    font-size: 64px;
+    margin-bottom:  24px;
+    animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform:  translateY(-10px); }
+}
+
+.embedded_client_action_notice h3 {
+    font-size:  24px;
+    font-weight: 600;
+    color: var(--text-dark);
+    margin: 0 0 12px;
+}
+
+.client_action_description {
+    font-size: 16px;
+    color: var(--text-medium);
+    margin: 0 0 32px;
+    max-width: 400px;
+}
+
+.client_action_buttons {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.btn_large {
+    padding: 14px 32px ! important;
+    font-size:  15px !important;
+}
+
+.client_action_hint {
+    margin-top: 32px;
+    color: var(--text-light);
+}
+
+.client_action_hint small {
+    font-size: 12px;
+}
+
+/* Error state for client actions */
+.embedded_client_action_error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    padding: 40px;
+    text-align: center;
+}
+
+.embedded_client_action_error .error_icon {
+    font-size: 48px;
+    margin-bottom:  16px;
+}
+
+.embedded_client_action_error h3 {
+    font-size: 20px;
+    color: var(--text-dark);
+    margin: 0 0 8px;
+}
+
+.embedded_client_action_error p {
+    color: var(--text-medium);
+    margin: 0 0 8px;
+}
+
+.embedded_client_action_error .error_hint {
+    font-size: 13px;
+    color: var(--text-light);
+    margin-bottom: 24px;
+}
+
+.embedded_client_action_error .error_buttons {
+    display: flex;
+    gap: 12px;
+}
 /* ============ FULLSCREEN LOADER ============ */
 
 .zoho_fullscreen_loader {

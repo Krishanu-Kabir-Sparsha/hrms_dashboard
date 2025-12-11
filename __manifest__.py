@@ -20,6 +20,7 @@
         'project',
         'event',
         'mail',
+        'crm',
         
     ],
     'external_dependencies': {
