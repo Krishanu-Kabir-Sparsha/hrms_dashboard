@@ -1,13 +1,12 @@
 /** @odoo-module **/
 
 import { registry } from "@web/core/registry";
-import { Component, useState, onMounted, onWillStart, onWillUnmount, useRef, useEffect, useSubEnv, xml, mount } from "@odoo/owl";
+import { Component, useState, onMounted, onWillStart, onWillUnmount, useRef, useEffect, xml } from "@odoo/owl";
 import { useService } from "@web/core/utils/hooks";
 import { _t } from "@web/core/l10n/translation";
 import { loadJS } from "@web/core/assets";
 import { View } from "@web/views/view";
-import { useOwnedDialogs } from "@web/core/utils/hooks";
-import { standardActionServiceProps } from "@web/webclient/actions/action_service";
+
 
 export class ZohoDashboard extends Component {
     static template = "hrms_dashboard.ZohoDashboard";
@@ -42,14 +41,15 @@ export class ZohoDashboard extends Component {
             viewKey: 0,
             errorMessage: null,
             fabOpen: false,
-            // Action handling properties
             currentActionId: null,
+            // Client Action State
             isClientAction: false,
-            clientActionTag: null,
-            clientActionName: null,
+            clientActionComponent: null,
+            clientActionProps: null,
+            clientActionMounted: false,
         });
 
-        // Local State
+        // Local State (same as before)
         this.state = useState({
             loading: true,
             isManager: false,
@@ -78,7 +78,7 @@ export class ZohoDashboard extends Component {
             currentTime: new Date(),
         });
 
-        // Navigation items
+        // Navigation items (same as before)
         this.sidebarItems = [
             { id: "home", icon: "🏠", label: "Home", action: "home" },
             { id: "profile", icon: "👤", label: "Profile", action: "profile" },
@@ -86,16 +86,16 @@ export class ZohoDashboard extends Component {
             { id: "attendance", icon: "⏰", label: "Attendance", model: "hr.attendance", title: "My Attendance" },
             { id: "timesheet", icon: "⏱️", label: "Timesheets", model: "account.analytic.line", title: "My Timesheets" },
             { id: "payroll", icon: "💰", label: "Payroll", model: "hr.payslip", title: "My Payslips" },
-            { id:  "expense", icon: "💳", label: "Expenses", model: "hr.expense", title: "My Expenses" },
+            { id: "expense", icon: "💳", label: "Expenses", model: "hr.expense", title: "My Expenses" },
             { id: "operations", icon: "⚙️", label: "Operations", action: "operations" },
         ];
 
         this.contentTabs = [
-            { id:  "activities", label: "Activities" },
+            { id: "activities", label: "Activities" },
             { id: "attendance", label: "Attendance" },
             { id: "leaves", label: "Leaves" },
             { id: "expenses", label: "Expenses" },
-            { id: "projects", label:  "Projects" },
+            { id: "projects", label: "Projects" },
             { id: "notifications", label: "Notifications" },
         ];
 
@@ -120,23 +120,21 @@ export class ZohoDashboard extends Component {
             if (this.state.chartLoaded) {
                 this.renderCharts();
             }
-            
-            // Check if we need to render a pending action
-            // this.checkAndRenderPendingAction();
         });
 
-        // Use effect to watch for pending actions
-        // Use effect to watch for embedded state changes
-        useEffect(
-            () => {
-                // This runs when viewKey changes
-                // No cleanup needed, so don't return anything
-                if (this.embeddedState. isEmbeddedMode && ! this.embeddedState.loading) {
-                    // View is ready, no additional action needed
-                }
-            },
-            () => [this.embeddedState.viewKey]
-        );
+        // Watch for client action mounting
+        // useEffect(
+        //     () => {
+        //         if (this.embeddedState.isClientAction && 
+        //             this.embeddedState.clientActionComponent && 
+        //             !this.embeddedState.clientActionMounted) {
+        //             this.mountClientActionComponent();
+        //             // Small delay to ensure DOM is ready
+        //             setTimeout(() => this.mountClientActionComponent(), 50);
+        //         }
+        //     },
+        //     () => [this.embeddedState.isClientAction, this.embeddedState.clientActionComponent]
+        // );
 
         onWillUnmount(() => {
             this.cleanup();
@@ -151,11 +149,21 @@ export class ZohoDashboard extends Component {
     }
 
     cleanup() {
-        // Reset client action state safely
+        // Unmount client action if mounted
+        if (this.clientActionApp) {
+            try {
+                this.clientActionApp.destroy();
+                this.clientActionApp = null;
+            } catch (e) {
+                console.error("Error destroying client action:", e);
+            }
+        }
+
         if (this.embeddedState) {
             this.embeddedState.isClientAction = false;
-            this.embeddedState.clientActionTag = null;
-            this.embeddedState.clientActionName = null;
+            this.embeddedState.clientActionComponent = null;
+            this.embeddedState.clientActionProps = null;
+            this.embeddedState.clientActionMounted = false;
         }
         
         if (this.timerInterval) {
@@ -239,21 +247,17 @@ export class ZohoDashboard extends Component {
         const cleanDomain = this.cleanDomain(domain);
         const cleanContext = this.cleanContext(context);
 
-        // Reset action service flags
-        this.embeddedState.useActionService = false;
-        this.embeddedState.pendingAction = null;
-
         const props = {
             resModel: resModel,
             type: viewType,
-            domain:  cleanDomain,
-            context:  cleanContext,
-            display:  {
+            domain: cleanDomain,
+            context: cleanContext,
+            display: {
                 controlPanel: {
-                    "top-left": true,
-                    "top-right": true,
-                    "bottom-left": true,
-                    "bottom-right": true,
+                    "top-left": true,   // New, Import buttons
+                    "top-right": true,  // Search panel
+                    "bottom-left": true,  // Pager
+                    "bottom-right": true, // View switcher
                 },
             },
             loadIrFilters: true,
@@ -261,23 +265,30 @@ export class ZohoDashboard extends Component {
             searchViewId: false,
             selectRecord: (resId, options) => this.handleSelectRecord(resModel, resId, options),
             createRecord: () => this.handleCreateRecord(resModel),
+            // // Add these to ensure buttons work
+            // noContentHelp: undefined,  // Let Odoo handle empty state
+            // editable: undefined,  // Let model config handle this
         };
 
-        // Add action ID if available for proper action context
+        // Add action ID for proper context
         if (this.embeddedState.currentActionId) {
             props.actionId = this.embeddedState.currentActionId;
         }
 
-        // For form views, add resId
-        if (viewType === "form" && resId) {
-            props.resId = resId;
-        }
-
-        // For form views, disable search panel
+        // For form views
         if (viewType === "form") {
+            if (resId) {
+                props.resId = resId;
+            }
             props.loadIrFilters = false;
             props.searchViewId = undefined;
+            props.mode = resId ? "readonly" : "edit"; // Start in edit mode for new records
         }
+
+        // Important: Don't set these unless you want to override model defaults
+        // props.allowCreate = undefined;
+        // props.editable = undefined;
+
 
         this.embeddedState.viewKey++;
         this.embeddedState.viewProps = props;
@@ -589,20 +600,104 @@ export class ZohoDashboard extends Component {
         }
     }
 
+    // ==================== CLIENT ACTION EMBEDDING - ENHANCED ====================
+
+    /**
+     * Load and render a client action directly as a component
+     */
+    async loadClientAction(actionId) {
+        try {
+            const [clientAction] = await this.orm.call(
+                "ir.actions.client",
+                "read",
+                [[actionId]],
+                { fields: ["tag", "name", "params", "context", "target", "res_model"] }
+            );
+
+            if (!clientAction) {
+                throw new Error("Client action not found");
+            }
+
+            this.embeddedState.viewTitle = clientAction.name || "Application";
+            this.embeddedState.currentActionId = actionId;
+
+            // Set state to show client action notice
+            this.embeddedState.isClientAction = true;
+            this.embeddedState.clientActionTag = clientAction.tag;
+            this.embeddedState.clientActionName = clientAction.name;
+            this.embeddedState.clientActionParams = clientAction.params || {};
+            this.embeddedState.clientActionContext = this.parseContextSafe(clientAction.context);
+            this.embeddedState.currentResModel = clientAction.res_model || null;
+            this.embeddedState.viewProps = null;
+            this.embeddedState.errorMessage = null;
+            this.embeddedState.viewKey++;
+
+        } catch (error) {
+            console.error("Failed to load client action:", error);
+            this.embeddedState.errorMessage = error.message || "Failed to load application";
+            this.embeddedState.isClientAction = true;
+            this.embeddedState.clientActionTag = null;
+            this.embeddedState.viewProps = null;
+            this.embeddedState.viewKey++;
+        }
+    }
+
+
+
+    /**
+     * Unmount client action
+     */
+    unmountClientAction() {
+        if (this.clientActionApp) {
+            try {
+                this.clientActionApp.destroy();
+                this.clientActionApp = null;
+            } catch (e) {
+                console.error("Error unmounting client action:", e);
+            }
+        }
+        
+        this.embeddedState.isClientAction = false;
+        this.embeddedState.clientActionComponent = null;
+        this.embeddedState.clientActionProps = null;
+        this.embeddedState.clientActionMounted = false;
+
+        if (this.clientActionContainerRef.el) {
+            this.clientActionContainerRef.el.innerHTML = '';
+        }
+    }
+
+    /**
+     * Open current action in full page mode (fallback for problematic actions)
+     */
+    openInFullPage() {
+        if (this.embeddedState.currentActionId) {
+            window.location.href = `/web#action=${this.embeddedState.currentActionId}`;
+        } else if (this.embeddedState.currentApp?.id) {
+            window.location.href = `/web#menu_id=${this.embeddedState.currentApp.id}`;
+        }
+    }
+    
+    // ==================== ACTION LOADING ====================
+
     async loadActionById(actionId) {
+        console.log("🔍 loadActionById called with:", actionId);
         try {
             const numericId = this.extractActionId(actionId);
+            console.log("📊 Numeric ID:", numericId);
+            
             if (!numericId) {
                 throw new Error("Invalid action ID");
             }
 
-            // First, get the action type
             const [actionInfo] = await this.orm.searchRead(
                 "ir.actions.actions",
                 [["id", "=", numericId]],
                 ["type"],
                 { limit: 1 }
             );
+
+            console.log("📋 Action info:", actionInfo);
 
             if (!actionInfo) {
                 throw new Error("Action not found");
@@ -611,9 +706,9 @@ export class ZohoDashboard extends Component {
             const actionType = actionInfo.type;
 
             // Reset client action state
-            this.embeddedState.isClientAction = false;
-            this.embeddedState.clientActionComponent = null;
-            this.embeddedState.clientActionProps = null;
+            // this.embeddedState.isClientAction = false;
+            // this.embeddedState.clientActionComponent = null;
+            // this.embeddedState.clientActionProps = null;
             this.unmountClientAction();
 
             // Handle different action types
@@ -761,146 +856,6 @@ export class ZohoDashboard extends Component {
         }
     }
 
-    // ==================== CLIENT ACTION EMBEDDING ====================
-
-    /**
-     * Load and handle a client action - redirect to the View component approach
-     * or open in full page for complex client actions
-     */
-    async loadClientAction(actionId) {
-        try {
-            const [clientAction] = await this.orm.call(
-                "ir.actions.client",
-                "read",
-                [[actionId]],
-                { fields: ["tag", "name", "params", "context", "target"] }
-            );
-
-            if (!clientAction) {
-                throw new Error("Client action not found");
-            }
-
-            this.embeddedState.viewTitle = clientAction.name || "Application";
-            this.embeddedState.currentActionId = actionId;
-
-            // List of client actions that can potentially work embedded
-            // Most client actions in Odoo require full page context
-            const tag = clientAction.tag;
-            
-            // Check if this client action has a res_model we can fall back to
-            const params = clientAction.params || {};
-            
-            // For client actions, we'll show a friendly message with option to open in full page
-            // This is because most Odoo client actions (discuss, crm pipeline dashboards, etc.)
-            // are tightly integrated with Odoo's action service and require full page context
-            this.embeddedState.isClientAction = true;
-            this.embeddedState.clientActionTag = tag;
-            this.embeddedState.clientActionName = clientAction.name;
-            this.embeddedState.viewProps = null;
-            this.embeddedState.currentResModel = null;
-            this.embeddedState.errorMessage = null;
-            this.embeddedState.viewKey++;
-
-        } catch (error) {
-            console.error("Failed to load client action:", error);
-            this.embeddedState.errorMessage = error.message || "Failed to load application";
-            this.embeddedState.isClientAction = false;
-        }
-    }
-
-    
-
-    /**
-     * Open current action in full page mode (for client actions that can't be embedded)
-     */
-    openInFullPage() {
-        if (this.embeddedState.currentActionId) {
-            window.location.href = `/web#action=${this.embeddedState.currentActionId}`;
-        } else if (this.embeddedState.currentApp?.id) {
-            window.location.href = `/web#menu_id=${this.embeddedState.currentApp.id}`;
-        }
-    }
-
-    /**
-     * Unmount any client action resources (simplified - no longer mounting components)
-     */
-    unmountClientAction() {
-        // Reset client action state
-        this.embeddedState.isClientAction = false;
-        this.embeddedState.clientActionTag = null;
-        this.embeddedState.clientActionName = null;
-    }
-
-    /**
-     * Execute a generic action via action service
-     */
-    // async executeGenericAction(actionId, actionType) {
-    //     try {
-    //         this.embeddedState.useActionService = true;
-    //         this.embeddedState.pendingAction = {
-    //             type: actionType,
-    //             id: actionId,
-    //         };
-    //         this.embeddedState.viewProps = {
-    //             type: "genericAction",
-    //             actionId: actionId,
-    //             actionType: actionType,
-    //         };
-    //         this.embeddedState.viewKey++;
-    //     } catch (error) {
-    //         console.error("Failed to execute generic action:", error);
-    //         throw error;
-    //     }
-    // }
-
-    /**
-     * Render pending action in the action container
-     */
-    // async renderPendingAction() {
-    //     if (!this.embeddedState.useActionService || !this.embeddedState.pendingAction) {
-    //         return;
-    //     }
-
-    //     const containerEl = this.actionContainerRef.el;
-    //     if (!containerEl) {
-    //         return;
-    //     }
-
-    //     try {
-    //         const action = this.embeddedState.pendingAction;
-            
-    //         // Clear container
-    //         containerEl.innerHTML = '';
-            
-    //         // Execute the action using Odoo's action service
-    //         // This will render the action inside our container
-    //         await this.actionService.doAction(action, {
-    //             clearBreadcrumbs: true,
-    //             stackPosition: "replaceCurrentAction",
-    //             additionalContext: action.context || {},
-    //             onClose: () => {
-    //                 // When action is closed, go back
-    //                 this.goBackFromForm();
-    //             },
-    //         });
-
-    //     } catch (error) {
-    //         console.error("Failed to render action:", error);
-    //         this.embeddedState.errorMessage = "Failed to load this view:  " + (error.message || "Unknown error");
-    //         this.embeddedState.useActionService = false;
-    //         this.embeddedState.pendingAction = null;
-    //     }
-    // }
-
-    /**
-     * Check and render pending action if needed
-     */
-    // checkAndRenderPendingAction() {
-    //     if (this.embeddedState.useActionService && this.embeddedState.pendingAction) {
-    //         // Small delay to ensure DOM is ready
-    //         setTimeout(() => this.renderPendingAction(), 100);
-    //     }
-    // }
 
 
     parseDomainSafe(domainValue) {
@@ -984,9 +939,7 @@ export class ZohoDashboard extends Component {
     }
 
     closeEmbeddedView() {
-        // Reset client action state
-        this.unmountClientAction();
-
+        // Reset all states
         this.embeddedState.isEmbeddedMode = false;
         this.embeddedState.currentApp = null;
         this.embeddedState.currentMenus = [];
@@ -1004,6 +957,8 @@ export class ZohoDashboard extends Component {
         this.embeddedState.isClientAction = false;
         this.embeddedState.clientActionTag = null;
         this.embeddedState.clientActionName = null;
+        this.embeddedState.clientActionParams = null;
+        this.embeddedState.clientActionContext = null;
         
         this.state.currentView = "home";
         this.state.activeMainTab = "myspace";

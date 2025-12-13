@@ -153,11 +153,13 @@
                                     <div class="embedded_error">
                                         <div class="error_icon">⚠️</div>
                                         <p t-esc="embeddedState.errorMessage"/>
-                                        <button class="btn_primary" t-on-click="closeEmbeddedView">Return to Dashboard</button>
+                                        <div class="error_buttons">
+                                            <button class="btn_primary" t-on-click="closeEmbeddedView">Return to Dashboard</button>
+                                        </div>
                                     </div>
                                 </t>
-                                <t t-elif="embeddedState.isClientAction">
-                                    <!-- Client Action - Show friendly message with open in full page option -->
+                                <t t-elif="embeddedState.isClientAction and embeddedState.clientActionTag">
+                                    <!-- CLIENT ACTION NOTICE - Opens in Full Page -->
                                     <div class="embedded_client_action_notice">
                                         <div class="client_action_icon">🚀</div>
                                         <h3 t-esc="embeddedState.clientActionName or 'Application'"/>
@@ -165,26 +167,27 @@
                                             This application works best in full-page mode for the complete experience.
                                         </p>
                                         <div class="client_action_buttons">
-                                            <button class="btn_primary btn_large" t-on-click="openInFullPage">
+                                            <button class="btn btn-primary btn_large" t-on-click="openInFullPage">
                                                 🔗 Open in Full Page
                                             </button>
-                                            <button class="btn_outline" t-on-click="closeEmbeddedView">
+                                            <button class="btn btn-outline" t-on-click="closeEmbeddedView">
                                                 ← Back to Dashboard
                                             </button>
                                         </div>
                                         <p class="client_action_hint">
-                                            <small>Tip: Standard views (lists, forms, kanban) are embedded directly.</small>
+                                            <small>Tip: Standard views (lists, forms, kanban) work embedded. Complex apps like Discuss need full context.</small>
                                         </p>
                                     </div>
                                 </t>
                                 <t t-elif="embeddedState.viewProps and embeddedState.viewProps.resModel">
+                                    <!-- STANDARD VIEW RENDERING -->
                                     <div class="embedded_view_wrapper">
                                         <View t-props="embeddedState.viewProps" t-key="embeddedState.viewKey"/>
                                     </div>
                                 </t>
                                 <t t-else="">
                                     <div class="embedded_error">
-                                        <div class="error_icon">📭</div>
+                                        <div class="error_icon">🔭</div>
                                         <p>No view available</p>
                                         <button class="btn_primary" t-on-click="closeEmbeddedView">Return to Dashboard</button>
                                     </div>

@@ -217,6 +217,102 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
     height: 100%;
 }
 
+/* ============ CLIENT ACTION EMBEDDING STYLES ============ */
+
+/* ============ CLIENT ACTION WRAPPER FIXES ============ */
+
+.embedded_client_action_wrapper {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    background: var(--bg-card);
+    display: flex;
+    flex-direction: column;
+}
+
+/* Ensure mounted component takes full space */
+.embedded_client_action_wrapper > * {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+}
+
+.o_client_action_wrapper {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* Control panel in client actions */
+.embedded_client_action_wrapper .o_control_panel {
+    flex-shrink: 0;
+    z-index: 100;
+}
+
+/* Content area in client actions */
+.embedded_client_action_wrapper .o_content {
+    flex: 1;
+    overflow: auto;
+    min-height: 0;
+}
+
+/* Discuss specific fixes */
+.embedded_client_action_wrapper .o_mail_thread,
+.embedded_client_action_wrapper .o_discuss_container {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Ensure dropdowns work */
+.embedded_client_action_wrapper .dropdown-menu,
+.embedded_client_action_wrapper .o_popover {
+    z-index: 10010 !important;
+}
+
+/* Client Action Executor */
+.o_client_action_executor {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    background: var(--bg-card);
+    display: flex;
+    flex-direction: column;
+}
+
+.o_client_action_executor > div[t-ref="actionContainer"] {
+    flex: 1;
+    overflow: auto;
+    position: relative;
+}
+
+/* Ensure action manager renders properly */
+.o_client_action_executor .o_action_manager {
+    height: 100%;
+}
+
+.o_client_action_executor .o_action {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Control panels in client actions */
+.o_client_action_executor .o_control_panel {
+    flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--bg-card);
+}
+
+/* Content areas */
+.o_client_action_executor .o_content {
+    flex: 1;
+    overflow: auto;
+}
+
 /* ============ CLIENT ACTION NOTICE ============ */
 
 .embedded_client_action_notice {
