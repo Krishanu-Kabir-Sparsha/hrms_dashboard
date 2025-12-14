@@ -313,6 +313,53 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
     overflow: auto;
 }
 
+
+/* Action Manager Proxy */
+.o_action_manager_proxy {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    background: var(--bg-card);
+    display: flex;
+    flex-direction: column;
+}
+
+/* Make sure Odoo's action content renders properly in our proxy */
+.o_action_manager_proxy > .o_action {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    height: 100%;
+}
+
+/* Control panel in proxy */
+.o_action_manager_proxy .o_control_panel {
+    flex-shrink: 0;
+    z-index: 100;
+}
+
+/* Content area in proxy */
+.o_action_manager_proxy .o_content {
+    flex: 1;
+    overflow: auto;
+}
+
+/* Discuss specific */
+.o_action_manager_proxy .o_mail_thread,
+.o_action_manager_proxy .o_discuss_container {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Ensure dropdowns work in proxy */
+.o_action_manager_proxy .dropdown-menu,
+.o_action_manager_proxy .o_popover,
+.o_action_manager_proxy .modal {
+    z-index: 10010 !important;
+}
+
 /* ============ CLIENT ACTION NOTICE ============ */
 
 .embedded_client_action_notice {

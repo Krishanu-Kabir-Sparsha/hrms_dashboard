@@ -8,10 +8,115 @@ import { loadJS } from "@web/core/assets";
 import { View } from "@web/views/view";
 
 
+/**
+ * Proxy component that tricks Odoo's action service into rendering in our container
+ */
+class ActionManagerProxy extends Component {
+    static template = xml`
+        <div class="o_action_manager_proxy" t-ref="proxyContainer" style="height: 100%; display: flex; flex-direction: column; position: relative;">
+            <!-- Odoo will render the client action here -->
+        </div>
+    `;
+    
+    static props = {
+        actionId: Number,
+        tag: String,
+        name: String,
+        params: { type: Object, optional: true },
+        context: { type: Object, optional: true },
+        onClose: { type: Function, optional: true },
+    };
+
+    setup() {
+        this.actionService = useService("action");
+        this.proxyContainer = useRef("proxyContainer");
+        
+        this.state = useState({
+            error: null,
+            mounted: false,
+        });
+
+        onMounted(async () => {
+            await this.mountClientAction();
+        });
+
+        onWillUnmount(() => {
+            this.cleanup();
+        });
+    }
+
+    async mountClientAction() {
+        try {
+            const containerEl = this.proxyContainer.el;
+            if (!containerEl) {
+                throw new Error("Proxy container not ready");
+            }
+
+            // Create a temporary action manager div
+            const tempActionManager = document.createElement('div');
+            tempActionManager.className = 'o_action_manager o_temp_action_manager';
+            tempActionManager.style.cssText = 'height: 100%; display: flex; flex-direction: column;';
+            containerEl.appendChild(tempActionManager);
+
+            // Store the original querySelector to restore later
+            const originalQuerySelector = document.querySelector;
+            
+            // Intercept querySelector to return our temp action manager
+            document.querySelector = function(selector) {
+                if (selector === '.o_action_manager' || selector.includes('o_action_manager')) {
+                    return tempActionManager;
+                }
+                return originalQuerySelector.call(document, selector);
+            };
+
+            try {
+                // Execute the action
+                await this.actionService.doAction(
+                    {
+                        type: "ir.actions.client",
+                        tag: this.props.tag,
+                        name: this.props.name,
+                        params: this.props.params || {},
+                        context: this.props.context || {},
+                    },
+                    {
+                        clearBreadcrumbs: true,
+                        stackPosition: "replaceCurrentAction",
+                    }
+                );
+
+                this.state.mounted = true;
+
+            } finally {
+                // Restore original querySelector
+                document.querySelector = originalQuerySelector;
+                this.tempActionManager = tempActionManager;
+            }
+
+        } catch (error) {
+            console.error("❌ Failed to mount client action:", error);
+            this.state.error = error.message;
+        }
+    }
+
+    cleanup() {
+        // Remove temp action manager
+        if (this.tempActionManager && this.tempActionManager.parentNode) {
+            this.tempActionManager.parentNode.removeChild(this.tempActionManager);
+        }
+    }
+
+    openFullPage() {
+        if (this.props.actionId) {
+            window.location.href = `/web#action=${this.props.actionId}`;
+        }
+    }
+}
+
 export class ZohoDashboard extends Component {
     static template = "hrms_dashboard.ZohoDashboard";
     static props = ["*"];
-    static components = { View };
+    static components = { View, ActionManagerProxy };
 
     setup() {
         // Core Services

@@ -159,25 +159,18 @@
                                     </div>
                                 </t>
                                 <t t-elif="embeddedState.isClientAction and embeddedState.clientActionTag">
-                                    <!-- CLIENT ACTION NOTICE - Opens in Full Page -->
-                                    <div class="embedded_client_action_notice">
-                                        <div class="client_action_icon">🚀</div>
-                                        <h3 t-esc="embeddedState.clientActionName or 'Application'"/>
-                                        <p class="client_action_description">
-                                            This application works best in full-page mode for the complete experience.
-                                        </p>
-                                        <div class="client_action_buttons">
-                                            <button class="btn btn-primary btn_large" t-on-click="openInFullPage">
-                                                🔗 Open in Full Page
-                                            </button>
-                                            <button class="btn btn-outline" t-on-click="closeEmbeddedView">
-                                                ← Back to Dashboard
-                                            </button>
-                                        </div>
-                                        <p class="client_action_hint">
-                                            <small>Tip: Standard views (lists, forms, kanban) work embedded. Complex apps like Discuss need full context.</small>
-                                        </p>
-                                    </div>
+                                    <!-- CLIENT ACTION VIA PROXY -->
+                                    <ActionManagerProxy 
+                                        t-props="{
+                                            actionId: embeddedState.currentActionId,
+                                            tag: embeddedState.clientActionTag,
+                                            name: embeddedState.clientActionName,
+                                            params: embeddedState.clientActionParams,
+                                            context: embeddedState.clientActionContext,
+                                            onClose: () => this.closeEmbeddedView(),
+                                        }"
+                                        t-key="embeddedState.viewKey"
+                                    />
                                 </t>
                                 <t t-elif="embeddedState.viewProps and embeddedState.viewProps.resModel">
                                     <!-- STANDARD VIEW RENDERING -->
