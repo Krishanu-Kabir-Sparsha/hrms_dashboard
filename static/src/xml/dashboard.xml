@@ -93,20 +93,31 @@
                                     </div>
                                 </t>
                             </div>
-                                                        <div class="menubar_actions">
+                            <div class="menubar_actions">
+                                <!-- View Type Switchers -->
+                                <t t-foreach="embeddedState.availableViewTypes" t-as="viewType" t-key="viewType">
+                                    <t t-if="viewType !== 'form'">
+                                        <button class="view_switch_btn" 
+                                                t-att-class="{'active': embeddedState.currentViewType === viewType}"
+                                                t-on-click="() => this.switchEmbeddedViewType(viewType)" 
+                                                t-att-title="viewType.charAt(0).toUpperCase() + viewType.slice(1) + ' View'">
+                                            <t t-if="viewType === 'list'">📋</t>
+                                            <t t-elif="viewType === 'kanban'">📊</t>
+                                            <t t-elif="viewType === 'calendar'">📅</t>
+                                            <t t-elif="viewType === 'graph'">📈</t>
+                                            <t t-elif="viewType === 'pivot'">🔢</t>
+                                            <t t-elif="viewType === 'activity'">✓</t>
+                                            <t t-else="">📄</t>
+                                        </button>
+                                    </t>
+                                </t>
+                                
+                                <!-- Back button for form view -->
                                 <button class="view_switch_btn" 
-                                        t-att-class="{'active': embeddedState.currentViewType === 'list'}"
-                                        t-on-click="() => this.switchEmbeddedViewType('list')" 
-                                        title="List View">📋</button>
-                                <button class="view_switch_btn" 
-                                        t-att-class="{'active': embeddedState.currentViewType === 'kanban'}"
-                                        t-on-click="() => this.switchEmbeddedViewType('kanban')" 
-                                        title="Kanban View">📊</button>
-                                <button class="view_switch_btn" 
-                                        t-att-class="{'active': embeddedState.currentViewType === 'form'}"
                                         t-on-click="() => this.goBackFromForm()" 
                                         t-if="embeddedState.currentViewType === 'form'"
                                         title="Back to List">⬅️</button>
+                                
                                 <button class="menubar_refresh_btn" t-on-click="refreshEmbeddedView" title="Refresh">🔄</button>
                                 <button class="menubar_close_btn" t-on-click="closeEmbeddedView">✕ Close</button>
                             </div>
@@ -158,19 +169,16 @@
                                         </div>
                                     </div>
                                 </t>
-                                <t t-elif="embeddedState.isClientAction and embeddedState.clientActionTag">
-                                    <!-- CLIENT ACTION VIA PROXY -->
-                                    <ActionManagerProxy 
-                                        t-props="{
-                                            actionId: embeddedState.currentActionId,
-                                            tag: embeddedState.clientActionTag,
-                                            name: embeddedState.clientActionName,
-                                            params: embeddedState.clientActionParams,
-                                            context: embeddedState.clientActionContext,
-                                            onClose: () => this.closeEmbeddedView(),
-                                        }"
-                                        t-key="embeddedState.viewKey"
-                                    />
+                                <t t-elif="embeddedState.isClientAction">
+                                    <!-- CLIENT ACTION CONTAINER - ALWAYS RENDER -->
+                                    <div class="embedded_client_action_container" t-ref="clientActionContainer" style="position: absolute; inset: 0;">
+                                        <t t-if="!embeddedState.clientActionMounted">
+                                            <div class="embedded_loader">
+                                                <div class="zoho_spinner"/>
+                                                <p>Mounting application...</p>
+                                            </div>
+                                        </t>
+                                    </div>
                                 </t>
                                 <t t-elif="embeddedState.viewProps and embeddedState.viewProps.resModel">
                                     <!-- STANDARD VIEW RENDERING -->

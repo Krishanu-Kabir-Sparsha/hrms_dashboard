@@ -325,44 +325,82 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
 }
 
 /* Make sure Odoo's action content renders properly in our proxy */
-.o_action_manager_proxy > .o_action {
+.o_action_manager_proxy > .o_action,
+.o_action_manager_proxy .o_action {
     flex: 1;
     display: flex;
     flex-direction: column;
     overflow: hidden;
     height: 100%;
+    min-height: 0;
 }
 
 /* Control panel in proxy */
 .o_action_manager_proxy .o_control_panel {
     flex-shrink: 0;
     z-index: 100;
+    position: sticky;
+    top: 0;
+    background: var(--bg-card);
 }
 
 /* Content area in proxy */
 .o_action_manager_proxy .o_content {
     flex: 1;
     overflow: auto;
+    min-height: 0;
 }
 
 /* Discuss specific */
 .o_action_manager_proxy .o_mail_thread,
-.o_action_manager_proxy .o_discuss_container {
+.o_action_manager_proxy .o_discuss_container,
+.o_action_manager_proxy .o-mail-Discuss {
     height: 100%;
     display: flex;
     flex-direction: column;
+    min-height: 0;
 }
 
 /* Ensure dropdowns work in proxy */
 .o_action_manager_proxy .dropdown-menu,
 .o_action_manager_proxy .o_popover,
-.o_action_manager_proxy .modal {
+.o_action_manager_proxy .modal,
+.o_action_manager_proxy .o_dropdown_menu {
     z-index: 10010 !important;
 }
 
-/* ============ CLIENT ACTION NOTICE ============ */
+/* Client action specific fixes */
+.o_action_manager_proxy .o_action.o-mail-Discuss,
+.o_action_manager_proxy .o-mail-DiscussSidebar,
+.o_action_manager_proxy .o-mail-Discuss-content {
+    overflow: visible !important;
+}
 
-.embedded_client_action_notice {
+.o_action_manager_proxy .o-mail-Discuss-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+/* Calendar view specific */
+.o_action_manager_proxy .o_calendar_view,
+.embedded_view_wrapper .o_calendar_view {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.o_action_manager_proxy .o_calendar_container,
+.embedded_view_wrapper .o_calendar_container {
+    flex: 1;
+    overflow: auto;
+    min-height: 0;
+}
+
+/* ============ CLIENT ACTION LOADING NOTICE ============ */
+
+.client_action_notice {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -370,25 +408,31 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
     height: 100%;
     padding: 60px 40px;
     text-align: center;
-    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    background: var(--bg-card);
 }
 
-.client_action_icon {
+.notice_icon {
     font-size: 64px;
-    margin-bottom:  24px;
-    animation: float 3s ease-in-out infinite;
+    margin-bottom: 24px;
+    animation: rotate 2s linear infinite;
 }
 
-@keyframes float {
-    0%, 100% { transform: translateY(0); }
-    50% { transform:  translateY(-10px); }
+@keyframes rotate {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
 }
 
-.embedded_client_action_notice h3 {
-    font-size:  24px;
+.client_action_notice h3 {
+    font-size: 24px;
     font-weight: 600;
     color: var(--text-dark);
     margin: 0 0 12px;
+}
+
+.notice_text {
+    font-size: 16px;
+    color: var(--text-medium);
+    margin: 0;
 }
 
 .client_action_description {
