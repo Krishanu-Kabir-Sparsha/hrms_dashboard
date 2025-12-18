@@ -150,7 +150,17 @@
 
                     <!-- CONTENT CONTAINER -->
                     <div class="zoho_content_container">
-                        
+                        <!-- PERSISTENT CLIENT ACTION CONTAINER - Always in DOM -->
+                        <div class="embedded_client_action_container" t-ref="clientActionContainer" 
+                            style="position: absolute; inset: 0; overflow: hidden; display: none;"
+                            t-att-style="embeddedState.isClientAction ?  'display: flex; flex-direction: column;' : 'display: none;'">
+                            <t t-if="!embeddedState.clientActionMounted">
+                                <div class="embedded_loader">
+                                    <div class="zoho_spinner"/>
+                                    <p>Loading application...</p>
+                                </div>
+                            </t>
+                        </div>
                         <!-- ==================== EMBEDDED VIEW ==================== -->
                         <t t-if="embeddedState.isEmbeddedMode">
                             <div class="zoho_embedded_view_container" t-ref="embeddedContainer">
@@ -169,13 +179,17 @@
                                         </div>
                                     </div>
                                 </t>
+                                <!-- CLIENT ACTION CONTAINER - ISOLATED ENVIRONMENT -->
                                 <t t-elif="embeddedState.isClientAction">
-                                    <!-- CLIENT ACTION CONTAINER - ALWAYS RENDER -->
-                                    <div class="embedded_client_action_container" t-ref="clientActionContainer" style="position: absolute; inset: 0;">
+                                    <!-- This div MUST be rendered before the manager tries to access it -->
+                                    <div class="embedded_client_action_container" 
+                                        t-ref="clientActionContainer" 
+                                        style="position: absolute; inset: 0; overflow: hidden; background: #fff;">
+                                        <!-- The EmbeddedActionManager will mount HERE -->
                                         <t t-if="!embeddedState.clientActionMounted">
                                             <div class="embedded_loader">
                                                 <div class="zoho_spinner"/>
-                                                <p>Mounting application...</p>
+                                                <p>Loading application...</p>
                                             </div>
                                         </t>
                                     </div>
@@ -327,7 +341,7 @@
                                     </t>
 
                                     <div class="welcome_section">
-                                        <h2>Welcome back, <t t-if="state.employee" t-esc="state.employee.name.split(' ')[0]"/><t t-else="">User</t>! 👋</h2>
+                                        <h2>Welcome back, <t t-if="state.employee" t-esc="state.employee.name.split(' ')[0]"/><t t-else="">User</t>!👋</h2>
                                         <p>Here's what's happening today</p>
                                     </div>
 

@@ -205,197 +205,101 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
 .embedded_action_container {
     position: absolute;
     inset: 0;
-    overflow: auto;
+    overflow: hidden;
     background: var(--bg-card);
+    display: flex;
+    flex-direction: column;
 }
 
 .embedded_action_container .o_action_manager {
     height: 100%;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
 }
 
 .embedded_action_container .o_action {
     height: 100%;
-}
-
-/* ============ CLIENT ACTION EMBEDDING STYLES ============ */
-
-/* ============ CLIENT ACTION WRAPPER FIXES ============ */
-
-.embedded_client_action_wrapper {
-    position: absolute;
-    inset: 0;
-    overflow: hidden;
-    background: var(--bg-card);
     display: flex;
     flex-direction: column;
 }
 
-/* Ensure mounted component takes full space */
-.embedded_client_action_wrapper > * {
-    flex: 1;
-    min-height: 0;
-    overflow: auto;
+/* ============ EMBEDDED CLIENT ACTION WRAPPER ============ */
+
+.o_embedded_client_wrapper {
+    position: absolute !important;
+    inset: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    background: white !important;
+    z-index: 50 !important;
 }
 
-.o_client_action_wrapper {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
+.o_embedded_client_wrapper .o_action_manager {
+    position: absolute !important;
+    inset:  0 !important;
+    height: 100% !important;
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
 }
 
-/* Control panel in client actions */
-.embedded_client_action_wrapper .o_control_panel {
-    flex-shrink: 0;
-    z-index: 100;
+.o_embedded_client_wrapper .o_action {
+    height: 100% !important;
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    position: absolute !important;
+    inset:  0 !important;
 }
 
-/* Content area in client actions */
-.embedded_client_action_wrapper .o_content {
-    flex: 1;
-    overflow: auto;
-    min-height: 0;
+/* Discuss/Mail specific styles */
+.o_embedded_client_wrapper .o-mail-Discuss,
+.o_embedded_client_wrapper .o_discuss_container,
+.o_embedded_client_wrapper .o_mail_thread {
+    height: 100% !important;
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
 }
 
-/* Discuss specific fixes */
-.embedded_client_action_wrapper .o_mail_thread,
-.embedded_client_action_wrapper .o_discuss_container {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
+.o_embedded_client_wrapper .o-mail-DiscussSidebar {
+    width: 300px !important;
+    max-width: 40% !important;
+    height:  100% !important;
+    border-right: 1px solid var(--border) !important;
+    overflow-y: auto !important;
+    flex-shrink: 0 !important;
 }
 
-/* Ensure dropdowns work */
-.embedded_client_action_wrapper .dropdown-menu,
-.embedded_client_action_wrapper .o_popover {
-    z-index: 10010 !important;
+.o_embedded_client_wrapper .o-mail-Discuss-content {
+    flex: 1 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
 }
 
-/* Client Action Executor */
-.o_client_action_executor {
-    position: absolute;
-    inset: 0;
-    overflow: hidden;
-    background: var(--bg-card);
-    display: flex;
-    flex-direction: column;
+/* Dashboard specific styles */
+.o_embedded_client_wrapper .o_dashboard_container,
+.o_embedded_client_wrapper .o_dashboard {
+    height: 100% !important;
+    width: 100% !important;
+    overflow: auto !important;
 }
 
-.o_client_action_executor > div[t-ref="actionContainer"] {
-    flex: 1;
-    overflow: auto;
-    position: relative;
-}
-
-/* Ensure action manager renders properly */
-.o_client_action_executor .o_action_manager {
-    height: 100%;
-}
-
-.o_client_action_executor .o_action {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-}
-
-/* Control panels in client actions */
-.o_client_action_executor .o_control_panel {
-    flex-shrink: 0;
-    position: sticky;
-    top: 0;
-    z-index: 100;
-    background: var(--bg-card);
-}
-
-/* Content areas */
-.o_client_action_executor .o_content {
-    flex: 1;
-    overflow: auto;
-}
-
-
-/* Action Manager Proxy */
-.o_action_manager_proxy {
-    position: absolute;
-    inset: 0;
-    overflow: hidden;
-    background: var(--bg-card);
-    display: flex;
-    flex-direction: column;
-}
-
-/* Make sure Odoo's action content renders properly in our proxy */
-.o_action_manager_proxy > .o_action,
-.o_action_manager_proxy .o_action {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    height: 100%;
-    min-height: 0;
-}
-
-/* Control panel in proxy */
-.o_action_manager_proxy .o_control_panel {
-    flex-shrink: 0;
-    z-index: 100;
-    position: sticky;
-    top: 0;
-    background: var(--bg-card);
-}
-
-/* Content area in proxy */
-.o_action_manager_proxy .o_content {
-    flex: 1;
-    overflow: auto;
-    min-height: 0;
-}
-
-/* Discuss specific */
-.o_action_manager_proxy .o_mail_thread,
-.o_action_manager_proxy .o_discuss_container,
-.o_action_manager_proxy .o-mail-Discuss {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-}
-
-/* Ensure dropdowns work in proxy */
-.o_action_manager_proxy .dropdown-menu,
-.o_action_manager_proxy .o_popover,
-.o_action_manager_proxy .modal,
-.o_action_manager_proxy .o_dropdown_menu {
-    z-index: 10010 !important;
-}
-
-/* Client action specific fixes */
-.o_action_manager_proxy .o_action.o-mail-Discuss,
-.o_action_manager_proxy .o-mail-DiscussSidebar,
-.o_action_manager_proxy .o-mail-Discuss-content {
-    overflow: visible !important;
-}
-
-.o_action_manager_proxy .o-mail-Discuss-content {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-}
-
-/* Calendar view specific */
-.o_action_manager_proxy .o_calendar_view,
-.embedded_view_wrapper .o_calendar_view {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-}
-
-.o_action_manager_proxy .o_calendar_container,
-.embedded_view_wrapper .o_calendar_container {
-    flex: 1;
-    overflow: auto;
-    min-height: 0;
+/* Dropdowns and modals must be visible */
+.o_embedded_client_wrapper .dropdown-menu,
+.o_embedded_client_wrapper .o_popover,
+.o_embedded_client_wrapper .modal,
+.o_embedded_client_wrapper .o_dropdown_menu,
+.o_embedded_client_wrapper .o_searchview_dropdown {
+    z-index: 10000 !important;
+    position: absolute !important;
 }
 
 /* ============ CLIENT ACTION LOADING NOTICE ============ */
@@ -450,7 +354,7 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
 }
 
 .btn_large {
-    padding: 14px 32px ! important;
+    padding: 14px 32px !important;
     font-size:  15px !important;
 }
 

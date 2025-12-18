@@ -7,6 +7,7 @@ import { _t } from "@web/core/l10n/translation";
 import { loadJS } from "@web/core/assets";
 import { View } from "@web/views/view";
 
+
 export class ZohoDashboard extends Component {
     static template = "hrms_dashboard.ZohoDashboard";
     static props = ["*"];
@@ -101,6 +102,9 @@ export class ZohoDashboard extends Component {
             { id: "organization", label: "Organization" },
         ];
 
+        // Store original ACTION_MANAGER:UPDATE handler
+        // this.originalActionHandler = null;
+
         // Lifecycle
         onWillStart(async () => {
             await this.loadChartLibrary();
@@ -113,6 +117,7 @@ export class ZohoDashboard extends Component {
             this.startClockTimer();
             this.startAnnouncementSlider();
             this.setupPersistentFrame();
+            this.interceptActionManager();
             if (this.state.chartLoaded) {
                 this.renderCharts();
             }
@@ -122,32 +127,60 @@ export class ZohoDashboard extends Component {
             this.cleanup();
         });
 
-        // Watch for client action container becoming available
-        useEffect(
-            () => {
-                if (this.embeddedState.isClientAction && 
-                    !this.embeddedState.clientActionMounted && 
-                    this.clientActionContainerRef?.el &&
-                    this.pendingClientAction) {
-                    
-                    console.log("✅ Container now available, mounting client action...");
-                    this.mountClientActionInContainer(this.pendingClientAction)
-                        .then(() => {
-                            this.pendingClientAction = null;
-                        })
-                        .catch(err => {
-                            console.error("Failed to mount:", err);
-                            this.embeddedState.errorMessage = err.message;
-                            this.embeddedState.isClientAction = false;
-                        });
-                }
-            },
-            () => [
-                this.embeddedState.isClientAction, 
-                this.embeddedState.clientActionMounted,
-                !!this.clientActionContainerRef?.el
-            ]
-        );
+        // Inject CSS to constrain Odoo actions within the container
+        this.injectActionContainerStyles();
+    }
+
+    // ==================== ACTION MANAGER INTERCEPTION ====================
+
+    interceptActionManager() {
+        console.log("🎯 Intercepting Action Manager...");
+        
+        // Listen to when actions are about to update
+        this.actionManagerUpdateHandler = ({ detail: info }) => {
+            console.log("📡 ACTION_MANAGER:UPDATE intercepted:", info);
+            
+            // Only redirect if we're in client action mode
+            if (this.embeddedState.isClientAction && info.Component) {
+                console.log("✅ Redirecting to embedded container");
+                this.redirectActionToContainer();
+                this.embeddedState.clientActionMounted = true;
+                this.embeddedState.loading = false;
+            }
+        };
+
+        this.env.bus.addEventListener("ACTION_MANAGER:UPDATE", this.actionManagerUpdateHandler);
+        console.log("✅ Action Manager intercepted");
+    }
+
+    redirectActionToContainer() {
+        // Find the main action manager that Odoo renders to
+        const mainActionManager = document.querySelector('.o_action_manager');
+        const container = this.clientActionContainerRef.el;
+        
+        if (!mainActionManager || !container) {
+            console.error("❌ Required elements not found");
+            return;
+        }
+
+        // Move the action manager's content into our container
+        requestAnimationFrame(() => {
+            // Get the action that was just rendered
+            const action = mainActionManager.querySelector('.o_action');
+            
+            if (action) {
+                // Clone or move it to our container
+                container.innerHTML = '';
+                const actionClone = action.cloneNode(true);
+                actionClone.style.cssText = 'position: absolute; inset: 0; display: flex; flex-direction: column; overflow: auto;';
+                container.appendChild(actionClone);
+                
+                // Hide the original
+                action.style.display = 'none';
+                
+                console.log("✅ Action redirected successfully");
+            }
+        });
     }
 
     // ==================== PERSISTENT FRAME SETUP ====================
@@ -157,21 +190,47 @@ export class ZohoDashboard extends Component {
         this.hideOdooNavbar();
     }
 
+    injectActionContainerStyles() {
+        const style = document.createElement('style');
+        style.textContent = `
+            .zoho-dashboard-active .o_main_navbar {
+                display: none !important;
+            }
+            
+            .embedded_client_action_container {
+                position: relative;
+                width: 100%;
+                height: 100%;
+            }
+            
+            .embedded_client_action_container .o_action {
+                position: absolute;
+                inset: 0;
+                display: flex;
+                flex-direction: column;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
     cleanup() {
+        // Remove event listener
+        if (this.actionManagerUpdateHandler) {
+            this.env.bus.removeEventListener("ACTION_MANAGER:UPDATE", this.actionManagerUpdateHandler);
+        }
+
         // Cleanup client action
         this.cleanupClientAction();
         
+        // Clear timers
         if (this.timerInterval) {
             clearInterval(this.timerInterval);
-            this.timerInterval = null;
         }
         if (this.clockInterval) {
             clearInterval(this.clockInterval);
-            this.clockInterval = null;
         }
         if (this.announcementInterval) {
             clearInterval(this.announcementInterval);
-            this.announcementInterval = null;
         }
         
         document.body.classList.remove('zoho-dashboard-active');
@@ -190,10 +249,20 @@ export class ZohoDashboard extends Component {
 
     // ==================== CLIENT ACTION HANDLING ====================
 
+    /**
+     * CRITICAL FIX: Use Odoo's action service directly without EmbeddedActionManager
+     * This is the ONLY correct way to render client actions in a custom container
+     */
     async loadClientAction(actionId) {
         console.log("🎬 Loading client action:", actionId);
-        
+
         try {
+            this.embeddedState.loading = true;
+            this.embeddedState.errorMessage = null;
+            this.embeddedState.isClientAction = true;
+            this.embeddedState.clientActionMounted = false;
+
+            // Load action info
             const [clientAction] = await this.orm.call(
                 "ir.actions.client",
                 "read",
@@ -207,79 +276,9 @@ export class ZohoDashboard extends Component {
 
             this.embeddedState.viewTitle = clientAction.name || "Application";
             this.embeddedState.currentActionId = actionId;
-            this.embeddedState.isClientAction = true;
-            this.embeddedState.clientActionMounted = false;
-            this.embeddedState.viewProps = null;
-            this.embeddedState.errorMessage = null;
 
-            // Store for useEffect to pick up
-            this.pendingClientAction = clientAction;
-
-            // Force a render cycle to create the container
-            this.embeddedState.viewKey++;
-
-            // If container already exists, mount immediately
-            await new Promise(resolve => setTimeout(resolve, 150));
-            
-            const container = this.clientActionContainerRef?.el;
-            if (container && this.pendingClientAction) {
-                console.log("✅ Container exists, mounting immediately");
-                await this.mountClientActionInContainer(this.pendingClientAction);
-                this.pendingClientAction = null;
-            } else {
-                console.log("⏳ Container not ready, useEffect will handle it");
-            }
-
-        } catch (error) {
-            console.error("❌ Failed to load client action:", error);
-            this.embeddedState.errorMessage = error.message || "Failed to load application";
-            this.embeddedState.isClientAction = false;
-            this.pendingClientAction = null;
-        }
-    }
-
-    async mountClientActionInContainer(clientAction) {
-        console.log("🔧 Mounting client action in container...");
-        
-        const container = this.clientActionContainerRef.el;
-        if (!container) {
-            throw new Error("Client action container not found");
-        }
-
-        // Clear container
-        container.innerHTML = '';
-
-        // Create a fake action manager that Odoo will render into
-        const fakeActionManager = document.createElement('div');
-        fakeActionManager.className = 'o_action_manager o_client_action_host';
-        fakeActionManager.style.cssText = 'height: 100%; display: flex; flex-direction: column; position: relative;';
-        container.appendChild(fakeActionManager);
-
-        // Store reference for cleanup
-        this.currentClientActionContainer = fakeActionManager;
-
-        // Intercept document.querySelector temporarily to return our fake action manager
-        const originalQuerySelector = document.querySelector.bind(document);
-        const originalQuerySelectorAll = document.querySelectorAll.bind(document);
-        
-        let interceptActive = true;
-        
-        document.querySelector = function(selector) {
-            if (interceptActive && (selector === '.o_action_manager' || selector.includes('o_action_manager'))) {
-                return fakeActionManager;
-            }
-            return originalQuerySelector(selector);
-        };
-
-        document.querySelectorAll = function(selector) {
-            if (interceptActive && (selector === '.o_action_manager' || selector.includes('o_action_manager'))) {
-                return [fakeActionManager];
-            }
-            return originalQuerySelectorAll(selector);
-        };
-
-        try {
-            // Execute the client action
+            // Execute the action - it will render to main container first,
+            // then our interceptor will move it
             await this.actionService.doAction(
                 {
                     type: "ir.actions.client",
@@ -287,47 +286,42 @@ export class ZohoDashboard extends Component {
                     name: clientAction.name,
                     params: clientAction.params || {},
                     context: this.parseContextSafe(clientAction.context) || {},
+                    target: "current",
                 },
                 {
-                    clearBreadcrumbs: true,
-                    stackPosition: "replaceCurrentAction",
-                    onClose: () => {
-                        console.log("Client action requested close");
-                        this.closeEmbeddedView();
-                    },
+                    clearBreadcrumbs: false,
                 }
             );
 
-            this.embeddedState.clientActionMounted = true;
-            console.log("✅ Client action mounted successfully");
+            // Give it a moment to render, then redirect
+            setTimeout(() => this.redirectActionToContainer(), 100);
+
+            console.log("✅ Client action loaded");
 
         } catch (error) {
-            console.error("❌ Failed to mount client action:", error);
-            throw error;
-        } finally {
-            // Restore original query functions after a delay
-            setTimeout(() => {
-                interceptActive = false;
-                document.querySelector = originalQuerySelector;
-                document.querySelectorAll = originalQuerySelectorAll;
-            }, 500);
+            console.error("❌ Failed to load client action:", error);
+            this.embeddedState.errorMessage = error.message || "Failed to load application";
+            this.embeddedState.isClientAction = false;
+            this.embeddedState.loading = false;
         }
     }
 
     cleanupClientAction() {
-        if (this.currentClientActionContainer) {
-            try {
-                // Clear the container
-                this.currentClientActionContainer.innerHTML = '';
-                this.currentClientActionContainer = null;
-            } catch (e) {
-                console.error("Error cleaning up client action:", e);
-            }
+        // Clean up our container
+        if (this.clientActionContainerRef.el) {
+            this.clientActionContainerRef.el.innerHTML = '';
         }
-        
+
+        // Restore any hidden actions
+        const hiddenActions = document.querySelectorAll('.o_action[style*="display: none"]');
+        hiddenActions.forEach(action => {
+            action.style.display = '';
+        });
+
         this.embeddedState.isClientAction = false;
         this.embeddedState.clientActionMounted = false;
     }
+
 
     // ==================== DYNAMIC EMBEDDED VIEW SYSTEM ====================
 
@@ -345,8 +339,6 @@ export class ZohoDashboard extends Component {
         this.embeddedState.currentContext = context;
         this.state.currentView = "embedded";
 
-        // Cleanup any existing client action
-        this.cleanupClientAction();
 
         try {
             const menuInfo = await this.loadMenusForModel(resModel);
@@ -694,8 +686,6 @@ export class ZohoDashboard extends Component {
         this.embeddedState.loading = true;
         this.embeddedState.errorMessage = null;
 
-        // Cleanup any existing client action
-        this.cleanupClientAction();
 
         try {
             const menuData = await this.orm.call(
@@ -761,9 +751,6 @@ export class ZohoDashboard extends Component {
             }
 
             const actionType = actionInfo.type;
-
-            // Cleanup previous client action
-            this.cleanupClientAction();
 
             if (actionType === "ir.actions.act_window") {
                 const actionData = await this.orm.call(
@@ -973,9 +960,23 @@ export class ZohoDashboard extends Component {
     }
 
     closeEmbeddedView() {
-        // Cleanup client action first
-        this.cleanupClientAction();
+        console.log("Closing embedded view...");
         
+        // Restore main action visibility
+        const mainActionManager = document.querySelector('.o_action_manager');
+        if (mainActionManager) {
+            const activeAction = mainActionManager.querySelector('.o_action');
+            if (activeAction) {
+                activeAction.style.display = '';
+                activeAction.style.visibility = '';
+                activeAction.style.position = '';
+                activeAction.style.pointerEvents = '';
+            }
+        }
+
+        // Clean up container
+        this.cleanupClientAction();
+
         // Reset all states
         this.embeddedState.isEmbeddedMode = false;
         this.embeddedState.currentApp = null;
@@ -992,7 +993,8 @@ export class ZohoDashboard extends Component {
         this.embeddedState.errorMessage = null;
         this.embeddedState.currentActionId = null;
         this.embeddedState.isClientAction = false;
-        
+        this.embeddedState.clientActionMounted = false;
+
         this.state.currentView = "home";
         this.state.activeMainTab = "myspace";
 
