@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 {
-    'name': 'Open HRMS HR Dashboard',
+    'name': 'Open HR Dashboard',
     'version': '18.0.1.0.0',
-    'summary': 'Open HRMS - HR Dashboard with Zoho Style Interface',
+    'summary': 'Open HR Dashboard with Zoho Style Interface',
     'description': 'Modern HR Dashboard with Zoho People Style Interface',
     'category': 'Human Resources',
-    'author': 'Cybrosys Techno Solutions',
-    'website': 'https://www.openhrms.com',
+    'author': 'Daffodil Group',
+    'website': 'https://daffodil.group/',
     'license': 'LGPL-3',
     'depends': [
         'base',

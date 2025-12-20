@@ -1,17 +1,27 @@
 /** @odoo-module **/
 
 import { registry } from "@web/core/registry";
-import { Component, useState, onMounted, onWillStart, onWillUnmount, useRef, useEffect } from "@odoo/owl";
+import { Component, useState, onMounted, onWillStart, onWillUnmount, useRef, xml } from "@odoo/owl";
 import { useService } from "@web/core/utils/hooks";
 import { _t } from "@web/core/l10n/translation";
-import { loadJS } from "@web/core/assets";
+import { loadJS, loadBundle } from "@web/core/assets";
 import { View } from "@web/views/view";
 
+
+/**
+ * Dynamic component wrapper that renders any component passed to it.
+ * This allows us to render client actions within our component tree,
+ * giving them access to all globally registered templates.
+ */
+class DynamicAction extends Component {
+    static template = xml`<t t-component="props.component" t-props="props.componentProps"/>`;
+    static props = ["component", "componentProps"];
+}
 
 export class ZohoDashboard extends Component {
     static template = "hrms_dashboard.ZohoDashboard";
     static props = ["*"];
-    static components = { View };
+    static components = { View, DynamicAction };
 
     setup() {
         // Core Services
@@ -21,7 +31,6 @@ export class ZohoDashboard extends Component {
 
         // Refs
         this.dashboardWrapperRef = useRef("dashboardWrapper");
-        this.clientActionContainerRef = useRef("clientActionContainer");
 
         // Embedded State
         this.embeddedState = useState({
@@ -44,6 +53,9 @@ export class ZohoDashboard extends Component {
             currentActionId: null,
             isClientAction: false,
             clientActionMounted: false,
+            // Dynamic client action component
+            clientActionComponent: null,
+            clientActionProps: null,
         });
 
         // Local State
@@ -102,8 +114,7 @@ export class ZohoDashboard extends Component {
             { id: "organization", label: "Organization" },
         ];
 
-        // Store original ACTION_MANAGER:UPDATE handler
-        // this.originalActionHandler = null;
+        // No internal holders needed - using state for dynamic component
 
         // Lifecycle
         onWillStart(async () => {
@@ -117,10 +128,10 @@ export class ZohoDashboard extends Component {
             this.startClockTimer();
             this.startAnnouncementSlider();
             this.setupPersistentFrame();
-            this.interceptActionManager();
             if (this.state.chartLoaded) {
                 this.renderCharts();
             }
+            console.log("🏠 Dashboard mounted");
         });
 
         onWillUnmount(() => {
@@ -131,57 +142,6 @@ export class ZohoDashboard extends Component {
         this.injectActionContainerStyles();
     }
 
-    // ==================== ACTION MANAGER INTERCEPTION ====================
-
-    interceptActionManager() {
-        console.log("🎯 Intercepting Action Manager...");
-        
-        // Listen to when actions are about to update
-        this.actionManagerUpdateHandler = ({ detail: info }) => {
-            console.log("📡 ACTION_MANAGER:UPDATE intercepted:", info);
-            
-            // Only redirect if we're in client action mode
-            if (this.embeddedState.isClientAction && info.Component) {
-                console.log("✅ Redirecting to embedded container");
-                this.redirectActionToContainer();
-                this.embeddedState.clientActionMounted = true;
-                this.embeddedState.loading = false;
-            }
-        };
-
-        this.env.bus.addEventListener("ACTION_MANAGER:UPDATE", this.actionManagerUpdateHandler);
-        console.log("✅ Action Manager intercepted");
-    }
-
-    redirectActionToContainer() {
-        // Find the main action manager that Odoo renders to
-        const mainActionManager = document.querySelector('.o_action_manager');
-        const container = this.clientActionContainerRef.el;
-        
-        if (!mainActionManager || !container) {
-            console.error("❌ Required elements not found");
-            return;
-        }
-
-        // Move the action manager's content into our container
-        requestAnimationFrame(() => {
-            // Get the action that was just rendered
-            const action = mainActionManager.querySelector('.o_action');
-            
-            if (action) {
-                // Clone or move it to our container
-                container.innerHTML = '';
-                const actionClone = action.cloneNode(true);
-                actionClone.style.cssText = 'position: absolute; inset: 0; display: flex; flex-direction: column; overflow: auto;';
-                container.appendChild(actionClone);
-                
-                // Hide the original
-                action.style.display = 'none';
-                
-                console.log("✅ Action redirected successfully");
-            }
-        });
-    }
 
     // ==================== PERSISTENT FRAME SETUP ====================
 
@@ -192,46 +152,316 @@ export class ZohoDashboard extends Component {
 
     injectActionContainerStyles() {
         const style = document.createElement('style');
+        style.id = 'zoho-dashboard-styles';
         style.textContent = `
+            /* Hide main navbar when dashboard is active */
             .zoho-dashboard-active .o_main_navbar {
                 display: none !important;
             }
             
-            .embedded_client_action_container {
-                position: relative;
-                width: 100%;
-                height: 100%;
-            }
-            
-            .embedded_client_action_container .o_action {
+            /* Client action wrapper - renders inline within component tree */
+            .embedded_client_action_wrapper {
                 position: absolute;
                 inset: 0;
                 display: flex;
                 flex-direction: column;
+                overflow: auto;
+                background: #fff;
+            }
+            
+            .embedded_client_action_wrapper > * {
+                flex: 1;
+                min-height: 0;
+                display: flex;
+                flex-direction: column;
             }
         `;
+        
+        // Remove existing style if present
+        const existing = document.getElementById('zoho-dashboard-styles');
+        if (existing) existing.remove();
+        
         document.head.appendChild(style);
     }
 
-    cleanup() {
-        // Remove event listener
-        if (this.actionManagerUpdateHandler) {
-            this.env.bus.removeEventListener("ACTION_MANAGER:UPDATE", this.actionManagerUpdateHandler);
+    /**
+     * Create a sandboxed action service that reroutes actions to the embedded
+     * renderer instead of replacing the whole webclient action stack.
+     */
+    getEmbeddedActionService() {
+        if (this.embeddedActionService) {
+            return this.embeddedActionService;
         }
 
-        // Cleanup client action
+        const self = this;
+        const baseAction = this.actionService;
+
+        this.embeddedActionService = {
+            ...baseAction,
+            async doAction(actionRequest, options = {}) {
+                // Normalize xml_id / id / full action objects
+                if (typeof actionRequest === "number" || typeof actionRequest === "string") {
+                    return self.loadActionById(actionRequest);
+                }
+
+                if (actionRequest?.type === "ir.actions.client") {
+                    const actionId = actionRequest.id || actionRequest.action_id || actionRequest.params?.action || null;
+                    if (actionId) {
+                        return self.loadClientAction(actionId);
+                    }
+                    if (actionRequest.tag) {
+                        return self.loadClientActionByTag(actionRequest.tag, actionRequest);
+                    }
+                }
+
+                if (actionRequest?.type === "ir.actions.act_window") {
+                    // Render window actions with the embedded view pipeline
+                    const viewModes = (actionRequest.view_mode || "list").split(",");
+                    let viewType = (viewModes[0] || "list").trim();
+                    if (viewType === "tree") viewType = "list";
+
+                    self.embeddedState.currentResModel = actionRequest.res_model;
+                    self.embeddedState.currentViewType = viewType;
+                    self.embeddedState.currentDomain = actionRequest.domain || [];
+                    self.embeddedState.currentContext = actionRequest.context || {};
+                    self.embeddedState.currentResId = actionRequest.res_id || false;
+                    self.embeddedState.viewTitle = actionRequest.name || self.embeddedState.viewTitle || "";
+                    self.embeddedState.isEmbeddedMode = true;
+                    self.embeddedState.isClientAction = false;
+                    self.state.currentView = "embedded";
+
+                    await self.loadAvailableViewTypes(actionRequest.res_model);
+                    self.buildDynamicViewProps(
+                        actionRequest.res_model,
+                        viewType,
+                        actionRequest.domain || [],
+                        actionRequest.context || {},
+                        actionRequest.res_id || false
+                    );
+                    return;
+                }
+
+                // Fallback to the default behavior (for dialogs, reports, etc.)
+                return baseAction.doAction(actionRequest, options);
+            },
+        };
+
+        return this.embeddedActionService;
+    }
+
+    /**
+     * Known bundle mappings for client actions that require additional assets.
+     * These bundles contain the templates and additional JavaScript needed.
+     */
+    getActionBundles(tag) {
+        // Map action tags to their required asset bundles
+        const bundleMap = {
+            // Mail / Discuss
+            'mail.action_discuss': ['mail.assets_messaging', 'mail.assets_discuss_public'],
+            'mail_action_discuss': ['mail.assets_messaging'],
+            
+            // Spreadsheet / Dashboards
+            'action_spreadsheet_dashboard': ['spreadsheet.assets_spreadsheet_dashboard', 'spreadsheet.o_spreadsheet'],
+            'spreadsheet_dashboard': ['spreadsheet.assets_spreadsheet_dashboard'],
+            
+            // Calendar
+            'calendar.action_calendar': ['calendar.assets_calendar'],
+            
+            // CRM
+            'crm.action_pipeline': ['crm.assets_crm'],
+            
+            // Knowledge
+            'knowledge.action_home': ['knowledge.assets_knowledge'],
+        };
+        
+        return bundleMap[tag] || [];
+    }
+
+    /**
+     * Load required asset bundles for a client action.
+     */
+    async loadActionBundles(tag) {
+        const bundles = this.getActionBundles(tag);
+        
+        if (bundles.length === 0) {
+            // Try to infer bundle from tag (e.g., "mail.action_discuss" → "mail")
+            const moduleName = tag.split('.')[0];
+            if (moduleName && moduleName !== tag) {
+                console.log(`📦 Trying to load inferred bundle: ${moduleName}.assets_backend`);
+                try {
+                    await loadBundle(`${moduleName}.assets_backend`);
+                } catch (e) {
+                    console.log(`  → Bundle ${moduleName}.assets_backend not found, continuing...`);
+                }
+            }
+            return;
+        }
+
+        console.log(`📦 Loading ${bundles.length} bundle(s) for ${tag}:`, bundles);
+        
+        for (const bundle of bundles) {
+            try {
+                console.log(`  → Loading bundle: ${bundle}`);
+                await loadBundle(bundle);
+                console.log(`  ✓ Bundle loaded: ${bundle}`);
+            } catch (e) {
+                console.warn(`  ✗ Failed to load bundle ${bundle}:`, e.message);
+            }
+        }
+    }
+
+    /**
+     * Resolve a lazy-loaded component from the action registry.
+     * First loads required bundles, then resolves the component.
+     */
+    async resolveLazyComponent(tag) {
+        // Step 1: Load required bundles FIRST
+        console.log("📥 Loading required bundles...");
+        await this.loadActionBundles(tag);
+        
+        // Step 2: Get from registry (might be available now after bundle load)
+        const actionRegistry = registry.category("actions");
+        let entry = actionRegistry.get(tag);
+        
+        if (!entry) {
+            // Try without module prefix
+            const shortTag = tag.includes('.') ? tag.split('.').pop() : null;
+            if (shortTag) {
+                entry = actionRegistry.get(shortTag);
+            }
+        }
+        
+        if (!entry) {
+            throw new Error(`Action "${tag}" is not registered`);
+        }
+
+        console.log("📦 Resolving component for:", tag, "Entry type:", typeof entry);
+
+        let ComponentClass = null;
+
+        // Pattern 1: Direct Component class
+        if (typeof entry === 'function' && entry.prototype instanceof Component) {
+            console.log("  → Direct Component class");
+            return entry;
+        }
+
+        // Pattern 2: Lazy loader function (returns Promise)
+        if (typeof entry === 'function') {
+            console.log("  → Lazy loader function, calling...");
+            try {
+                const result = await entry();
+                if (result) {
+                    ComponentClass = result.default || result.Component || result;
+                }
+                if (!ComponentClass) {
+                    throw new Error("Lazy loader returned empty result");
+                }
+                console.log("  → Resolved to:", ComponentClass?.name || ComponentClass);
+            } catch (e) {
+                console.error("  → Lazy loader failed:", e);
+                throw e;
+            }
+        }
+        // Pattern 3: Object with Component property
+        else if (entry.Component) {
+            const comp = entry.Component;
+            if (typeof comp === 'function' && comp.prototype instanceof Component) {
+                console.log("  → Object with Component class");
+                ComponentClass = comp;
+            } else if (typeof comp === 'function') {
+                console.log("  → Object with lazy Component, calling...");
+                try {
+                    const result = await comp();
+                    if (result) {
+                        ComponentClass = result.default || result.Component || result;
+                    }
+                    if (!ComponentClass) {
+                        throw new Error("Lazy Component loader returned empty result");
+                    }
+                } catch (e) {
+                    console.error("  → Lazy Component failed:", e);
+                    throw e;
+                }
+            } else {
+                ComponentClass = comp;
+            }
+        }
+        // Pattern 4: Object itself might be usable
+        else if (typeof entry === 'object' && entry.prototype instanceof Component) {
+            ComponentClass = entry;
+        }
+
+        if (!ComponentClass) {
+            throw new Error(`Could not resolve component for "${tag}"`);
+        }
+
+        // Verify it's a valid Component
+        if (typeof ComponentClass !== 'function') {
+            throw new Error(`Resolved "${tag}" is not a valid Component class`);
+        }
+
+        return ComponentClass;
+    }
+
+    /**
+     * Mount a client action component inside our SPA container.
+     * Sets the component in state so it renders within our component tree,
+     * giving it access to all globally registered templates.
+     */
+    async doMountClientAction(clientAction) {
+        console.log("🚀 Mounting client action in SPA:", clientAction.tag);
+
+        try {
+            // Step 1: Resolve the lazy-loaded component (includes bundle loading)
+            console.log("📥 Step 1: Resolving component (with bundle loading)...");
+            const ClientComponent = await this.resolveLazyComponent(clientAction.tag);
+            console.log("✅ Component resolved:", ClientComponent.name || clientAction.tag);
+
+            // Step 2: Check template
+            const templateName = ClientComponent.template;
+            console.log("🔍 Step 2: Component template:", templateName);
+
+            // Step 3: Create action props matching Odoo's structure
+            const actionProps = {
+                action: {
+                    id: clientAction.id,
+                    type: "ir.actions.client",
+                    tag: clientAction.tag,
+                    name: clientAction.name,
+                    params: clientAction.params || {},
+                    context: clientAction.context || {},
+                    target: "current",
+                },
+                actionId: clientAction.id,
+            };
+
+            // Step 4: Set component in state - this triggers OWL to render it
+            // within our component tree, sharing all globally registered templates
+            console.log("🔧 Step 3: Setting component in state for dynamic rendering...");
+            
+            this.embeddedState.clientActionComponent = ClientComponent;
+            this.embeddedState.clientActionProps = actionProps;
+            this.embeddedState.clientActionMounted = true;
+            this.embeddedState.loading = false;
+            
+            console.log("✅ Client action set for rendering!");
+
+        } catch (error) {
+            console.error("❌ Failed to mount client action:", error);
+            this.embeddedState.errorMessage = `Failed to load ${clientAction.name}: ${error.message}`;
+            this.embeddedState.clientActionComponent = null;
+            this.embeddedState.clientActionProps = null;
+            this.embeddedState.loading = false;
+        }
+    }
+
+    cleanup() {
+        // Cleanup client action app
         this.cleanupClientAction();
         
-        // Clear timers
-        if (this.timerInterval) {
-            clearInterval(this.timerInterval);
-        }
-        if (this.clockInterval) {
-            clearInterval(this.clockInterval);
-        }
-        if (this.announcementInterval) {
-            clearInterval(this.announcementInterval);
-        }
+        if (this.timerInterval) clearInterval(this.timerInterval);
+        if (this.clockInterval) clearInterval(this.clockInterval);
+        if (this.announcementInterval) clearInterval(this.announcementInterval);
         
         document.body.classList.remove('zoho-dashboard-active');
         this.showOdooNavbar();
@@ -250,19 +480,22 @@ export class ZohoDashboard extends Component {
     // ==================== CLIENT ACTION HANDLING ====================
 
     /**
-     * CRITICAL FIX: Use Odoo's action service directly without EmbeddedActionManager
-     * This is the ONLY correct way to render client actions in a custom container
+     * Load and mount a client action inside the SPA container.
+     * Resolves lazy-loaded components and creates a sub-application.
      */
     async loadClientAction(actionId) {
         console.log("🎬 Loading client action:", actionId);
 
         try {
+            // Set loading state
             this.embeddedState.loading = true;
             this.embeddedState.errorMessage = null;
             this.embeddedState.isClientAction = true;
             this.embeddedState.clientActionMounted = false;
+            this.embeddedState.isEmbeddedMode = true;
+            this.state.currentView = "embedded";
 
-            // Load action info
+            // Fetch action details
             const [clientAction] = await this.orm.call(
                 "ir.actions.client",
                 "read",
@@ -277,47 +510,48 @@ export class ZohoDashboard extends Component {
             this.embeddedState.viewTitle = clientAction.name || "Application";
             this.embeddedState.currentActionId = actionId;
 
-            // Execute the action - it will render to main container first,
-            // then our interceptor will move it
-            await this.actionService.doAction(
-                {
-                    type: "ir.actions.client",
-                    tag: clientAction.tag,
-                    name: clientAction.name,
-                    params: clientAction.params || {},
-                    context: this.parseContextSafe(clientAction.context) || {},
-                    target: "current",
-                },
-                {
-                    clearBreadcrumbs: false,
-                }
-            );
+            const actionData = {
+                ...clientAction,
+                context: this.parseContextSafe(clientAction.context) || {},
+            };
 
-            // Give it a moment to render, then redirect
-            setTimeout(() => this.redirectActionToContainer(), 100);
+            console.log("🚀 Mounting client action in SPA:", clientAction.tag);
 
-            console.log("✅ Client action loaded");
+            // Mount the client action in our container
+            await this.doMountClientAction(actionData);
 
         } catch (error) {
             console.error("❌ Failed to load client action:", error);
             this.embeddedState.errorMessage = error.message || "Failed to load application";
-            this.embeddedState.isClientAction = false;
             this.embeddedState.loading = false;
+            this.notification.add(
+                _t("Failed to load application: ") + (error.message || "Unknown error"),
+                { type: "danger" }
+            );
         }
     }
 
-    cleanupClientAction() {
-        // Clean up our container
-        if (this.clientActionContainerRef.el) {
-            this.clientActionContainerRef.el.innerHTML = '';
+    async loadClientActionByTag(tag, originalAction = null) {
+        const [clientAction] = await this.orm.searchRead(
+            "ir.actions.client",
+            [["tag", "=", tag]],
+            ["id"],
+            { limit: 1 }
+        );
+
+        if (!clientAction) {
+            throw new Error(`Client action with tag "${tag}" not found`);
         }
 
-        // Restore any hidden actions
-        const hiddenActions = document.querySelectorAll('.o_action[style*="display: none"]');
-        hiddenActions.forEach(action => {
-            action.style.display = '';
-        });
+        return this.loadClientAction(clientAction.id || originalAction?.id);
+    }
 
+    cleanupClientAction() {
+        console.log("🧹 Cleaning up client action...");
+
+        // Clear the dynamic component from state
+        this.embeddedState.clientActionComponent = null;
+        this.embeddedState.clientActionProps = null;
         this.embeddedState.isClientAction = false;
         this.embeddedState.clientActionMounted = false;
     }
@@ -436,7 +670,7 @@ export class ZohoDashboard extends Component {
                         typeof v === 'boolean' || typeof v === 'number' || typeof v === 'string'
                     );
                 } catch (e) {
-                    // Skip invalid arrays
+                    // Skip
                 }
             }
         }
