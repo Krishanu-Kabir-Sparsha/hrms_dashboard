@@ -134,7 +134,7 @@
                                         t-on-click="() => this.switchEmbeddedViewType('list')" 
                                         title="List View">📋</button>
                                 <button class="titlebar_btn view_switch_btn" 
-                                        t-att-class="{'active':  embeddedState.currentViewType === 'kanban'}"
+                                        t-att-class="{'active': embeddedState.currentViewType === 'kanban'}"
                                         t-on-click="() => this.switchEmbeddedViewType('kanban')" 
                                         title="Kanban View">📊</button>
                                 <button class="titlebar_btn view_switch_btn" 
@@ -187,8 +187,12 @@
                                 </t>
                                 <t t-elif="embeddedState.viewProps and embeddedState.viewProps.resModel">
                                     <!-- STANDARD VIEW RENDERING -->
-                                    <div class="embedded_view_wrapper">
-                                        <View t-props="embeddedState.viewProps" t-key="embeddedState.viewKey"/>
+                                    <div class="embedded_view_wrapper" t-att-data-view-type="embeddedState.currentViewType">
+                                        <View 
+                                            t-props="embeddedState.viewProps" 
+                                            t-key="embeddedState.viewKey"
+                                            t-on-view-loaded="() => this.handleViewMounted(embeddedState.currentViewType)"
+                                        />
                                     </div>
                                 </t>
                                 <t t-else="">

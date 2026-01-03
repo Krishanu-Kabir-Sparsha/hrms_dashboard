@@ -114,6 +114,15 @@ export class ZohoDashboard extends Component {
             { id: "organization", label: "Organization" },
         ];
 
+        // Store original doAction
+        this._originalDoAction = this.actionService.doAction.bind(this.actionService);
+        
+        // Patch the action service globally for this component
+        this.patchActionService();
+
+        // Add to class properties in setup()
+        this.actionStack = [];
+
         // No internal holders needed - using state for dynamic component
 
         // Lifecycle
@@ -140,6 +149,117 @@ export class ZohoDashboard extends Component {
 
         // Inject CSS to constrain Odoo actions within the container
         this.injectActionContainerStyles();
+
+        // Intercept browser history changes when in SPA mode
+        this.setupRouterInterception();
+    }
+
+    // New method - Global action service patch
+    patchActionService() {
+        const self = this;
+        const originalDoAction = this._originalDoAction;
+
+        this.actionService.doAction = async (actionRequest, options = {}) => {
+            // Only intercept when in embedded mode
+            if (!self.embeddedState.isEmbeddedMode) {
+                return originalDoAction(actionRequest, options);
+            }
+
+            // Handle different action request formats
+            if (typeof actionRequest === "number" || typeof actionRequest === "string") {
+                // Check if it's a window action we should embed
+                try {
+                    const numericId = self.extractActionId(actionRequest);
+                    if (numericId) {
+                        return await self.loadActionById(numericId);
+                    }
+                } catch (e) {
+                    // Fallback to original
+                    return originalDoAction(actionRequest, options);
+                }
+            }
+
+            // Handle action objects
+            if (actionRequest?.type === "ir.actions.act_window") {
+                // Dialogs should use original behavior
+                if (options.target === "new" || actionRequest.target === "new") {
+                    return originalDoAction(actionRequest, options);
+                }
+
+                const viewModes = (actionRequest.view_mode || "list").split(",");
+                let viewType = (viewModes[0] || "list").trim();
+                if (viewType === "tree") viewType = "list";
+
+                self.embeddedState.currentResModel = actionRequest.res_model;
+                self.embeddedState.currentViewType = viewType;
+                self.embeddedState.currentDomain = actionRequest.domain || [];
+                self.embeddedState.currentContext = actionRequest.context || {};
+                self.embeddedState.currentResId = actionRequest.res_id || false;
+                self.embeddedState.viewTitle = actionRequest.name || self.embeddedState.viewTitle || "";
+                self.embeddedState.isClientAction = false;
+
+                await self.loadAvailableViewTypes(actionRequest.res_model);
+                self.buildDynamicViewProps(
+                    actionRequest.res_model,
+                    viewType,
+                    actionRequest.domain || [],
+                    actionRequest.context || {},
+                    actionRequest.res_id || false
+                );
+                return;
+            }
+
+            if (actionRequest?.type === "ir.actions.client") {
+                const actionId = actionRequest.id || actionRequest.action_id;
+                if (actionId) {
+                    return self.loadClientAction(actionId);
+                }
+                if (actionRequest.tag) {
+                    return self.loadClientActionByTag(actionRequest.tag, actionRequest);
+                }
+            }
+
+            // All other actions use original behavior
+            return originalDoAction(actionRequest, options);
+        };
+    }
+
+    setupRouterInterception() {
+        // Store original pushState
+        this._originalPushState = history.pushState.bind(history);
+        this._originalReplaceState = history.replaceState.bind(history);
+        
+        const self = this;
+        
+        // Intercept pushState
+        history.pushState = function(state, title, url) {
+            if (self.embeddedState.isEmbeddedMode) {
+                // In embedded mode, update URL without triggering navigation
+                // Only update if it's a valid Odoo action URL
+                if (url && url.includes('/web#') || url.includes('/odoo/')) {
+                    self._originalReplaceState.call(history, state, title, url);
+                    return;
+                }
+            }
+            return self._originalPushState.call(history, state, title, url);
+        };
+        
+        // Handle popstate (back button)
+        this._popstateHandler = (event) => {
+            if (this.embeddedState.isEmbeddedMode) {
+                event.preventDefault();
+                event.stopPropagation();
+                
+                // Handle back navigation within SPA
+                if (this.embeddedState.breadcrumbs.length > 1) {
+                    this.goBackFromForm();
+                } else {
+                    this.closeEmbeddedView();
+                }
+            }
+        };
+        
+        window.addEventListener('popstate', this._popstateHandler);
     }
 
 
@@ -256,19 +376,28 @@ export class ZohoDashboard extends Component {
     getActionBundles(tag) {
         // Map action tags to their required asset bundles
         const bundleMap = {
+            // Calendar
+            'calendar.action_calendar': ['calendar.assets_calendar'],
+           
             // Mail / Discuss
             'mail.action_discuss': ['mail.assets_messaging', 'mail.assets_discuss_public'],
             'mail_action_discuss': ['mail.assets_messaging'],
             
+            // Time Off / HR Holidays
+            'hr_holidays.hr_leave_action_my_request': ['hr_holidays.assets_hr_holidays'],
+            'hr_holidays.hr_leave_action_action_approve_department': ['hr_holidays.assets_hr_holidays'],
+            'hr_holidays.action_hr_leave_dashboard': ['hr_holidays.assets_hr_holidays'],
+
             // Spreadsheet / Dashboards
             'action_spreadsheet_dashboard': ['spreadsheet.assets_spreadsheet_dashboard', 'spreadsheet.o_spreadsheet'],
             'spreadsheet_dashboard': ['spreadsheet.assets_spreadsheet_dashboard'],
             
-            // Calendar
-            'calendar.action_calendar': ['calendar.assets_calendar'],
+            // Project
+            'project.action_view_all_task': ['project.assets_project'],
             
             // CRM
             'crm.action_pipeline': ['crm.assets_crm'],
+            'crm.crm_lead_action_pipeline': ['crm.assets_crm'],
             
             // Knowledge
             'knowledge.action_home': ['knowledge.assets_knowledge'],
@@ -315,89 +444,64 @@ export class ZohoDashboard extends Component {
      * First loads required bundles, then resolves the component.
      */
     async resolveLazyComponent(tag) {
-        // Step 1: Load required bundles FIRST
-        console.log("📥 Loading required bundles...");
+        // Load bundles first
         await this.loadActionBundles(tag);
         
-        // Step 2: Get from registry (might be available now after bundle load)
+        // Also try to load module-specific backend assets
+        const moduleName = tag.split('.')[0];
+        if (moduleName && moduleName !== tag) {
+            for (const bundleSuffix of ['assets_backend', 'assets_' + moduleName]) {
+                try {
+                    await loadBundle(`${moduleName}.${bundleSuffix}`);
+                } catch (e) {
+                    // Silently continue
+                }
+            }
+        }
+
         const actionRegistry = registry.category("actions");
         let entry = actionRegistry.get(tag);
         
+        // Try variations of the tag
         if (!entry) {
-            // Try without module prefix
-            const shortTag = tag.includes('.') ? tag.split('.').pop() : null;
-            if (shortTag) {
-                entry = actionRegistry.get(shortTag);
+            const variations = [
+                tag,
+                tag.split('.').pop(),  // Just the action name
+                tag.replace('.', '_'), // Underscore version
+            ];
+            
+            for (const variation of variations) {
+                entry = actionRegistry.get(variation);
+                if (entry) break;
             }
         }
         
         if (!entry) {
-            throw new Error(`Action "${tag}" is not registered`);
+            throw new Error(`Action "${tag}" not found in registry after loading bundles`);
         }
 
-        console.log("📦 Resolving component for:", tag, "Entry type:", typeof entry);
-
+        // Resolve component (existing logic)
         let ComponentClass = null;
 
-        // Pattern 1: Direct Component class
         if (typeof entry === 'function' && entry.prototype instanceof Component) {
-            console.log("  → Direct Component class");
             return entry;
         }
 
-        // Pattern 2: Lazy loader function (returns Promise)
         if (typeof entry === 'function') {
-            console.log("  → Lazy loader function, calling...");
-            try {
-                const result = await entry();
-                if (result) {
-                    ComponentClass = result.default || result.Component || result;
-                }
-                if (!ComponentClass) {
-                    throw new Error("Lazy loader returned empty result");
-                }
-                console.log("  → Resolved to:", ComponentClass?.name || ComponentClass);
-            } catch (e) {
-                console.error("  → Lazy loader failed:", e);
-                throw e;
-            }
-        }
-        // Pattern 3: Object with Component property
-        else if (entry.Component) {
+            const result = await entry();
+            ComponentClass = result?.default || result?.Component || result;
+        } else if (entry.Component) {
             const comp = entry.Component;
             if (typeof comp === 'function' && comp.prototype instanceof Component) {
-                console.log("  → Object with Component class");
                 ComponentClass = comp;
             } else if (typeof comp === 'function') {
-                console.log("  → Object with lazy Component, calling...");
-                try {
-                    const result = await comp();
-                    if (result) {
-                        ComponentClass = result.default || result.Component || result;
-                    }
-                    if (!ComponentClass) {
-                        throw new Error("Lazy Component loader returned empty result");
-                    }
-                } catch (e) {
-                    console.error("  → Lazy Component failed:", e);
-                    throw e;
-                }
-            } else {
-                ComponentClass = comp;
+                const result = await comp();
+                ComponentClass = result?.default || result?.Component || result;
             }
-        }
-        // Pattern 4: Object itself might be usable
-        else if (typeof entry === 'object' && entry.prototype instanceof Component) {
-            ComponentClass = entry;
         }
 
         if (!ComponentClass) {
             throw new Error(`Could not resolve component for "${tag}"`);
-        }
-
-        // Verify it's a valid Component
-        if (typeof ComponentClass !== 'function') {
-            throw new Error(`Resolved "${tag}" is not a valid Component class`);
         }
 
         return ComponentClass;
@@ -456,6 +560,21 @@ export class ZohoDashboard extends Component {
     }
 
     cleanup() {
+        // Restore router
+        if (this._originalPushState) {
+            history.pushState = this._originalPushState;
+        }
+        if (this._originalReplaceState) {
+            history.replaceState = this._originalReplaceState;
+        }
+        if (this._popstateHandler) {
+            window.removeEventListener('popstate', this._popstateHandler);
+        }
+
+        // Restore original action service
+        if (this._originalDoAction) {
+            this.actionService.doAction = this._originalDoAction;
+        }
         // Cleanup client action app
         this.cleanupClientAction();
         
@@ -609,6 +728,21 @@ export class ZohoDashboard extends Component {
         }
     }
 
+    // Add this method to handle view-specific post-mount requirements
+    async handleViewMounted(viewType) {
+        if (viewType === 'calendar') {
+            // Calendar needs a resize trigger after mount to properly render
+            await new Promise(resolve => setTimeout(resolve, 100));
+            window.dispatchEvent(new Event('resize'));
+            
+            // Also trigger FullCalendar's render if available
+            const calendarEl = document.querySelector('.embedded_view_wrapper .fc');
+            if (calendarEl && calendarEl.__fullCalendar) {
+                calendarEl.__fullCalendar.render();
+            }
+        }
+    }
+
     buildDynamicViewProps(resModel, viewType, domain = [], context = {}, resId = false) {
         const cleanDomain = this.cleanDomain(domain);
         const cleanContext = this.cleanContext(context);
@@ -617,7 +751,11 @@ export class ZohoDashboard extends Component {
             resModel: resModel,
             type: viewType,
             domain: cleanDomain,
-            context: cleanContext,
+            context: {
+                ...cleanContext,
+                // Ensure edit capability is preserved
+                form_view_initial_mode: resId ? 'readonly' : 'edit',
+            },
             display: {
                 controlPanel: {
                     "top-left": true,
@@ -631,6 +769,8 @@ export class ZohoDashboard extends Component {
             searchViewId: false,
             selectRecord: (resId, options) => this.handleSelectRecord(resModel, resId, options),
             createRecord: () => this.handleCreateRecord(resModel),
+            // Add lifecycle hooks for view-specific initialization
+            onViewMounted: () => this.handleViewMounted(viewType),
         };
 
         if (this.embeddedState.currentActionId) {
@@ -643,8 +783,22 @@ export class ZohoDashboard extends Component {
             }
             props.loadIrFilters = false;
             props.searchViewId = undefined;
-            props.mode = resId ? "readonly" : "edit";
+            // Let the form view handle its own mode based on context
+            // Don't force readonly - this was blocking edit button
+            props.preventEdit = false;
+            props.preventCreate = false;
+            
+            // Handle save/discard without page reload
+            props.onSave = async (record) => {
+                this.notification.add(_t("Record saved"), { type: "success" });
+            };
+            props.onDiscard = () => {
+                if (this.embeddedState.breadcrumbs.length > 1) {
+                    this.goBackFromForm();
+                }
+            };
         }
+
 
         this.embeddedState.viewKey++;
         this.embeddedState.viewProps = props;
@@ -874,6 +1028,7 @@ export class ZohoDashboard extends Component {
 
     goBackFromForm() {
         if (this.embeddedState.breadcrumbs.length > 1) {
+            // Current behavior for within-action navigation
             const lastCrumb = this.embeddedState.breadcrumbs[this.embeddedState.breadcrumbs.length - 1];
             this.embeddedState.breadcrumbs = this.embeddedState.breadcrumbs.slice(0, -1);
             
@@ -891,6 +1046,11 @@ export class ZohoDashboard extends Component {
                 this.embeddedState.currentDomain,
                 this.embeddedState.currentContext
             );
+        } else if (this.actionStack.length > 0) {
+            // Go back to previous action
+            this.goBackInActionStack();
+        } else {
+            this.closeEmbeddedView();
         }
     }
 
@@ -973,6 +1133,21 @@ export class ZohoDashboard extends Component {
                 throw new Error("Invalid action ID");
             }
 
+            // Save current state to stack before loading new action
+            if (this.embeddedState.currentResModel || this.embeddedState.isClientAction) {
+                this.actionStack.push({
+                    resModel: this.embeddedState.currentResModel,
+                    viewType: this.embeddedState.currentViewType,
+                    domain: [...this.embeddedState.currentDomain],
+                    context: {...this.embeddedState.currentContext},
+                    resId: this.embeddedState.currentResId,
+                    title: this.embeddedState.viewTitle,
+                    breadcrumbs: [...this.embeddedState.breadcrumbs],
+                    isClientAction: this.embeddedState.isClientAction,
+                    actionId: this.embeddedState.currentActionId,
+                });
+            }
+
             const [actionInfo] = await this.orm.searchRead(
                 "ir.actions.actions",
                 [["id", "=", numericId]],
@@ -1053,6 +1228,38 @@ export class ZohoDashboard extends Component {
         } catch (error) {
             console.error("Failed to load action:", error);
             this.embeddedState.errorMessage = error.message || "Failed to load action";
+        }
+    }
+
+    // Add method to go back in action stack
+    goBackInActionStack() {
+        if (this.actionStack.length === 0) {
+            this.closeEmbeddedView();
+            return;
+        }
+
+        const previousState = this.actionStack.pop();
+        
+        this.embeddedState.currentResModel = previousState.resModel;
+        this.embeddedState.currentViewType = previousState.viewType;
+        this.embeddedState.currentDomain = previousState.domain;
+        this.embeddedState.currentContext = previousState.context;
+        this.embeddedState.currentResId = previousState.resId;
+        this.embeddedState.viewTitle = previousState.title;
+        this.embeddedState.breadcrumbs = previousState.breadcrumbs;
+        this.embeddedState.isClientAction = previousState.isClientAction;
+        this.embeddedState.currentActionId = previousState.actionId;
+
+        if (previousState.isClientAction) {
+            this.loadClientAction(previousState.actionId);
+        } else {
+            this.buildDynamicViewProps(
+                previousState.resModel,
+                previousState.viewType,
+                previousState.domain,
+                previousState.context,
+                previousState.resId
+            );
         }
     }
 
@@ -1195,7 +1402,8 @@ export class ZohoDashboard extends Component {
 
     closeEmbeddedView() {
         console.log("Closing embedded view...");
-        
+        // Clear action stack
+        this.actionStack = [];
         // Restore main action visibility
         const mainActionManager = document.querySelector('.o_action_manager');
         if (mainActionManager) {
