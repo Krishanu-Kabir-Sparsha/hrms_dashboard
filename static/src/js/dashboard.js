@@ -607,12 +607,13 @@ export class ZohoDashboard extends Component {
         console.log("🚀 Mounting client action in SPA:", clientAction.tag);
 
         try {
-            // Step 1: Load all required bundles
+            // Step 1: Load all required bundles FIRST and wait for them
             console.log("📥 Step 1: Loading bundles for", clientAction.tag);
             await this.loadActionBundles(clientAction.tag);
             
-            // Small delay to let bundles initialize
-            await new Promise(resolve => setTimeout(resolve, 50));
+            // CRITICAL: Give bundles time to fully initialize their components
+            // Some bundles register components asynchronously
+            await new Promise(resolve => setTimeout(resolve, 150));
             
             // Step 2: Resolve the component from registry
             console.log("📥 Step 2: Resolving component...");
@@ -624,7 +625,7 @@ export class ZohoDashboard extends Component {
                 throw new Error(`Invalid component for ${clientAction.tag}`);
             }
 
-            // Step 4: Create action props
+            // Step 4: Create action props - pass them directly, not nested
             const actionProps = {
                 action: {
                     id: clientAction.id,
@@ -638,14 +639,18 @@ export class ZohoDashboard extends Component {
                 actionId: clientAction.id,
             };
 
-            // Step 5: Set ALL state synchronously - no requestAnimationFrame!
+            // Step 5: Set component in state
             console.log("🔧 Step 3: Setting component for rendering...");
+            
             this.embeddedState.clientActionComponent = ClientComponent;
             this.embeddedState.clientActionProps = actionProps;
             this.embeddedState.clientActionMounted = true;
-            this.embeddedState.loading = false;  // Synchronous! 
             
-            console.log("✅ Client action ready!");
+            // Use setTimeout to ensure OWL processes the state change
+            setTimeout(() => {
+                this.embeddedState.loading = false;
+                console.log("✅ Client action ready");
+            }, 0);
 
         } catch (error) {
             console.error("❌ Failed to mount client action:", error);
@@ -784,14 +789,6 @@ export class ZohoDashboard extends Component {
         this.embeddedState.clientActionMounted = false;
     }
 
-    // In dashboard.js - Add these new methods to ZohoDashboard class
-
-    /**
-     * Schedule calendar initialization after the view is rendered.
-     * Uses MutationObserver to detect when FullCalendar DOM is ready.
-     */
-
-
     // ==================== DYNAMIC EMBEDDED VIEW SYSTEM ====================
 
     async loadEmbeddedView(resModel, title, domain = [], viewType = "list", context = {}) {
@@ -851,152 +848,258 @@ export class ZohoDashboard extends Component {
         }
     }
 
-    /**
-     * Load calendar view via action - calendar requires action context
-     */
-    async loadCalendarViaAction(resModel, title, domain = [], context = {}) {
-        // Set loading state FIRST
-        this.embeddedState.loading = true;
-        this.embeddedState.errorMessage = null;
-        this.embeddedState.viewProps = null;
-        this.embeddedState.isEmbeddedMode = true;
-        this.embeddedState.isClientAction = false;
-        this.embeddedState.clientActionComponent = null;
-        this.embeddedState.clientActionProps = null;
-        this.embeddedState.viewTitle = title;
-        this.embeddedState.currentResModel = resModel;
-        this.embeddedState.currentViewType = "calendar";
-        this.embeddedState.currentDomain = domain;
-        this.embeddedState.currentContext = context;
-        this.embeddedState.currentResId = false;
-        this.embeddedState.currentActionId = null;
-        this.embeddedState.breadcrumbs = [{ name: title, type: 'model' }];
-        this.state.currentView = "embedded";
-
-        try {
-            // Load calendar bundles
-            await this.loadViewBundles(resModel, "calendar");
+        /**
+         * Load calendar view via action - calendar requires action context
+         * FIXED: Proper state management and loading sequence
+         */
+        async loadCalendarViaAction(resModel, title, domain = [], context = {}) {
+            console.log("📅 Loading calendar view for:", resModel);
             
-            // Find existing action for this model
-            let actionId = null;
-            let mergedDomain = domain;
-            let mergedContext = context;
-            
-            try {
-                const actions = await this.orm.searchRead(
-                    "ir.actions.act_window",
-                    [["res_model", "=", resModel], ["view_mode", "ilike", "calendar"]],
-                    ["id", "name", "domain", "context"],
-                    { limit: 1 }
-                );
-                if (actions.length > 0) {
-                    actionId = actions[0].id;
-                    mergedDomain = [...this.parseDomainSafe(actions[0].domain), ...domain];
-                    mergedContext = { ...this.parseContextSafe(actions[0].context), ...context };
-                }
-            } catch (e) {
-                console.warn("Could not find calendar action:", e);
-            }
-
-            this.embeddedState.currentActionId = actionId;
-
-            // Set up menus
-            const menuInfo = await this.loadMenusForModel(resModel);
-            if (menuInfo.rootMenu) {
-                this.embeddedState.currentApp = { id: menuInfo.rootMenu.id, name: menuInfo.rootMenu.name };
-                this.embeddedState.currentMenus = menuInfo.children;
-                this.embeddedState.breadcrumbs = [
-                    { id: menuInfo.rootMenu.id, name: menuInfo.rootMenu.name, type: 'app' },
-                    { name: title, type: 'view' }
-                ];
-            }
-
-            await this.loadAvailableViewTypes(resModel);
-            
-            // Build and set props - this also sets loading=false
-            this.buildDynamicViewProps(resModel, "calendar", mergedDomain, mergedContext);
-            
-        } catch (error) {
-            console.error("Failed to load calendar:", error);
-            this.embeddedState.errorMessage = error.message || "Failed to load calendar";
+            // Step 1: Set loading state and clear previous view
+            this.embeddedState.loading = true;
             this.embeddedState.viewProps = null;
-            this.embeddedState.loading = false;
-        }
-    }
-
-
-    buildDynamicViewProps(resModel, viewType, domain = [], context = {}, resId = false) {
-        const cleanDomain = this.cleanDomain(domain);
-        const cleanContext = this.cleanContext(context);
-
-        const props = {
-            resModel: resModel,
-            type: viewType,
-            domain: cleanDomain,
-            context: {
-                ...cleanContext,
-                form_view_initial_mode: resId ? 'readonly' : 'edit',
-            },
-            display: {
-                controlPanel: {
-                    "top-left": true,
-                    "top-right": true,
-                    "bottom-left": true,
-                    "bottom-right": true,
-                },
-            },
-            loadIrFilters: true,
-            loadActionMenus: true,
-            searchViewId: false,
-            selectRecord: (resId, options) => this.handleSelectRecord(resModel, resId, options),
-            createRecord: () => this.handleCreateRecord(resModel),
-        };
-
-        // Add action ID if available
-        if (this.embeddedState.currentActionId) {
-            props.actionId = this.embeddedState.currentActionId;
-        }
-
-        // Calendar-specific configuration
-        if (viewType === "calendar") {
-            props.display = {
-                controlPanel: {
-                    "top-left": true,
-                    "top-right": true,
-                    "bottom-left": false,
-                    "bottom-right": false,
-                },
-            };
-        }
-
-        if (viewType === "form") {
-            if (resId) {
-                props.resId = resId;
-            }
-            props.loadIrFilters = false;
-            props.searchViewId = undefined;
-            props.preventEdit = false;
-            props.preventCreate = false;
+            this.embeddedState.clientActionComponent = null;
+            this.embeddedState.clientActionProps = null;
+            this.embeddedState.isClientAction = false;
+            this.embeddedState.clientActionMounted = false;
+            this.embeddedState.errorMessage = null;
             
-            props.onSave = async (record) => {
-                this.notification.add(_t("Record saved"), { type: "success" });
-            };
-            props.onDiscard = () => {
-                if (this.embeddedState.breadcrumbs.length > 1) {
-                    this.goBackFromForm();
+            // Step 2: Set embedded mode
+            this.embeddedState.isEmbeddedMode = true;
+            this.embeddedState.viewTitle = title;
+            this.embeddedState.currentResModel = resModel;
+            this.embeddedState.currentViewType = "calendar";
+            this.embeddedState.currentDomain = domain;
+            this.embeddedState.currentContext = context;
+            this.embeddedState.currentResId = false;
+            this.embeddedState.breadcrumbs = [{ name: title, type: 'model' }];
+            this.state.currentView = "embedded";
+
+            try {
+                // Step 3: Load bundles
+                console.log("📦 Loading calendar bundles...");
+                const calendarBundles = [
+                    'web.assets_backend_lazy',
+                    'web_calendar.calendar_assets',
+                    'calendar.assets_calendar',
+                    'calendar.assets_backend'
+                ];
+                
+                for (const bundle of calendarBundles) {
+                    try {
+                        await loadBundle(bundle);
+                        console.log(`  ✓ Loaded: ${bundle}`);
+                    } catch (e) {
+                        console.log(`  → Skipped: ${bundle}`);
+                    }
                 }
-            };
+                
+                // Step 4: Find calendar action
+                let actionId = null;
+                let mergedDomain = [...domain];
+                let mergedContext = { ...context };
+                
+                try {
+                    const actions = await this.orm.searchRead(
+                        "ir.actions.act_window",
+                        [["res_model", "=", resModel], ["view_mode", "ilike", "calendar"]],
+                        ["id", "name", "domain", "context"],
+                        { limit: 1 }
+                    );
+                    if (actions.length > 0) {
+                        actionId = actions[0].id;
+                        const actionDomain = this.parseDomainSafe(actions[0].domain);
+                        const actionContext = this.parseContextSafe(actions[0].context);
+                        mergedDomain = [...actionDomain, ...domain];
+                        mergedContext = { ...actionContext, ...context };
+                        console.log("✅ Found calendar action:", actionId);
+                    }
+                } catch (e) {
+                    console.warn("Could not find calendar action:", e);
+                }
+
+                this.embeddedState.currentActionId = actionId;
+                this.embeddedState.currentDomain = mergedDomain;
+                this.embeddedState.currentContext = mergedContext;
+
+                // Step 5: Load menus
+                const menuInfo = await this.loadMenusForModel(resModel);
+                if (menuInfo.rootMenu) {
+                    this.embeddedState.currentApp = { id: menuInfo.rootMenu.id, name: menuInfo.rootMenu.name };
+                    this.embeddedState.currentMenus = menuInfo.children;
+                    this.embeddedState.breadcrumbs = [
+                        { id: menuInfo.rootMenu.id, name: menuInfo.rootMenu.name, type: 'app' },
+                        { name: title, type: 'view' }
+                    ];
+                }
+
+                await this.loadAvailableViewTypes(resModel);
+                
+                // Step 6: Build props
+                const cleanDomain = this.cleanDomain(mergedDomain);
+                const cleanContext = this.cleanContext(mergedContext);
+
+                const viewProps = {
+                    resModel: resModel,
+                    type: "calendar",
+                    domain: cleanDomain,
+                    context: cleanContext,
+                    display: {
+                        controlPanel: {
+                            "top-left": true,
+                            "top-right": true,
+                            "bottom-left": false,
+                            "bottom-right": false,
+                        },
+                    },
+                    loadIrFilters: true,
+                    loadActionMenus: true,
+                    searchViewId: false,
+                    selectRecord: (resId, options) => this.handleSelectRecord(resModel, resId, options),
+                    createRecord: () => this.handleCreateRecord(resModel),
+                };
+
+                if (actionId) {
+                    viewProps.actionId = actionId;
+                }
+
+                // Step 7: Increment key first
+                this.embeddedState.viewKey++;
+                
+                // Step 8: Set viewProps - this triggers OWL to prepare the View component
+                this.embeddedState.viewProps = viewProps;
+                
+                console.log("📅 Calendar props set:", { resModel, actionId, key: this.embeddedState.viewKey });
+                
+                // Step 9: Wait for OWL to process, then set loading=false
+                // Using requestAnimationFrame ensures DOM update cycle completes
+                await new Promise(resolve => {
+                    requestAnimationFrame(() => {
+                        requestAnimationFrame(() => {
+                            this.embeddedState.loading = false;
+                            console.log("✅ Calendar view ready");
+                            resolve();
+                        });
+                    });
+                });
+                
+                // Step 10: Trigger resize for FullCalendar after a delay
+                setTimeout(() => {
+                    window.dispatchEvent(new Event('resize'));
+                }, 500);
+                
+            } catch (error) {
+                console.error("❌ Failed to load calendar:", error);
+                this.embeddedState.errorMessage = error.message || "Failed to load calendar";
+                this.embeddedState.viewProps = null;
+                this.embeddedState.loading = false;
+            }
         }
 
-        // CRITICAL FIX: Set all state synchronously in one batch
-        // Do NOT use requestAnimationFrame - it causes race conditions
-        this.embeddedState.errorMessage = null;
-        this.embeddedState.viewKey++;
-        this.embeddedState.viewProps = props;
-        this.embeddedState.loading = false;  // Set synchronously! 
-        
-        console.log(`📊 View ready: ${viewType} for ${resModel}, key=${this.embeddedState.viewKey}`);
-    }
+        /**
+         * Build calendar props - separated for clarity
+         */
+        _buildCalendarProps(resModel, domain, context, actionId) {
+            const cleanDomain = this.cleanDomain(domain);
+            const cleanContext = this.cleanContext(context);
+
+            const props = {
+                resModel: resModel,
+                type: "calendar",
+                domain: cleanDomain,
+                context: cleanContext,
+                display: {
+                    controlPanel: {
+                        "top-left": true,
+                        "top-right": true,
+                        "bottom-left": false,
+                        "bottom-right": false,
+                    },
+                },
+                loadIrFilters: true,
+                loadActionMenus: true,
+                searchViewId: false,
+                selectRecord: (resId, options) => this.handleSelectRecord(resModel, resId, options),
+                createRecord: () => this.handleCreateRecord(resModel),
+            };
+
+            if (actionId) {
+                props.actionId = actionId;
+            }
+
+            return props;
+        }
+
+        /**
+         * Build dynamic view props - FIXED loading sequence
+         */
+        buildDynamicViewProps(resModel, viewType, domain = [], context = {}, resId = false) {
+            // For calendar, use specialized method
+            if (viewType === "calendar") {
+                this.loadCalendarViaAction(resModel, this.embeddedState.viewTitle || "Calendar", domain, context);
+                return;
+            }
+            
+            const cleanDomain = this.cleanDomain(domain);
+            const cleanContext = this.cleanContext(context);
+
+            const props = {
+                resModel: resModel,
+                type: viewType,
+                domain: cleanDomain,
+                context: {
+                    ...cleanContext,
+                    form_view_initial_mode: resId ? 'readonly' : 'edit',
+                },
+                display: {
+                    controlPanel: {
+                        "top-left": true,
+                        "top-right": true,
+                        "bottom-left": true,
+                        "bottom-right": true,
+                    },
+                },
+                loadIrFilters: true,
+                loadActionMenus: true,
+                searchViewId: false,
+                selectRecord: (resId, options) => this.handleSelectRecord(resModel, resId, options),
+                createRecord: () => this.handleCreateRecord(resModel),
+            };
+
+            if (this.embeddedState.currentActionId) {
+                props.actionId = this.embeddedState.currentActionId;
+            }
+
+            if (viewType === "form") {
+                if (resId) {
+                    props.resId = resId;
+                }
+                props.loadIrFilters = false;
+                props.searchViewId = undefined;
+                props.preventEdit = false;
+                props.preventCreate = false;
+                
+                props.onSave = async (record) => {
+                    this.notification.add(_t("Record saved"), { type: "success" });
+                };
+                props.onDiscard = () => {
+                    if (this.embeddedState.breadcrumbs.length > 1) {
+                        this.goBackFromForm();
+                    }
+                };
+            }
+
+            // Set props
+            this.embeddedState.errorMessage = null;
+            this.embeddedState.viewProps = props;
+            this.embeddedState.viewKey++;
+            
+            // Set loading to false after props are set
+            setTimeout(() => {
+                this.embeddedState.loading = false;
+                console.log(`📊 View ready: ${viewType} for ${resModel}, key=${this.embeddedState.viewKey}`);
+            }, 50);
+        }
 
     cleanContext(context) {
         if (!context) return {};
@@ -1211,12 +1314,23 @@ export class ZohoDashboard extends Component {
         }
 
         this.embeddedState.currentViewType = newType;
-        this.buildDynamicViewProps(
-            this.embeddedState.currentResModel,
-            newType,
-            this.embeddedState.currentDomain,
-            this.embeddedState.currentContext
-        );
+        
+        // Use calendar-specific loading for calendar view
+        if (newType === "calendar") {
+            this.loadCalendarViaAction(
+                this.embeddedState.currentResModel,
+                this.embeddedState.viewTitle,
+                this.embeddedState.currentDomain,
+                this.embeddedState.currentContext
+            );
+        } else {
+            this.buildDynamicViewProps(
+                this.embeddedState.currentResModel,
+                newType,
+                this.embeddedState.currentDomain,
+                this.embeddedState.currentContext
+            );
+        }
     }
 
     goBackFromForm() {
@@ -1233,12 +1347,22 @@ export class ZohoDashboard extends Component {
                 this.embeddedState.viewTitle = this.embeddedState.breadcrumbs[this.embeddedState.breadcrumbs.length - 1].name;
             }
 
-            this.buildDynamicViewProps(
-                this.embeddedState.currentResModel,
-                previousType,
-                this.embeddedState.currentDomain,
-                this.embeddedState.currentContext
-            );
+            // Use calendar-specific loading if going back to calendar
+            if (previousType === "calendar") {
+                this.loadCalendarViaAction(
+                    this.embeddedState.currentResModel,
+                    this.embeddedState.viewTitle,
+                    this.embeddedState.currentDomain,
+                    this.embeddedState.currentContext
+                );
+            } else {
+                this.buildDynamicViewProps(
+                    this.embeddedState.currentResModel,
+                    previousType,
+                    this.embeddedState.currentDomain,
+                    this.embeddedState.currentContext
+                );
+            }
         } else if (this.actionStack.length > 0) {
             // Go back to previous action
             this.goBackInActionStack();
@@ -1253,16 +1377,27 @@ export class ZohoDashboard extends Component {
         this.embeddedState.loading = true;
         this.embeddedState.viewProps = null;
 
-        setTimeout(() => {
-            this.buildDynamicViewProps(
-                this.embeddedState.currentResModel,
-                this.embeddedState.currentViewType,
-                this.embeddedState.currentDomain,
-                this.embeddedState.currentContext,
-                this.embeddedState.currentResId
-            );
-            this.embeddedState.loading = false;
-        }, 100);
+        // Use appropriate method based on view type
+        if (this.embeddedState.currentViewType === "calendar") {
+            setTimeout(() => {
+                this.loadCalendarViaAction(
+                    this.embeddedState.currentResModel,
+                    this.embeddedState.viewTitle,
+                    this.embeddedState.currentDomain,
+                    this.embeddedState.currentContext
+                );
+            }, 100);
+        } else {
+            setTimeout(() => {
+                this.buildDynamicViewProps(
+                    this.embeddedState.currentResModel,
+                    this.embeddedState.currentViewType,
+                    this.embeddedState.currentDomain,
+                    this.embeddedState.currentContext,
+                    this.embeddedState.currentResId
+                );
+            }, 100);
+        }
     }
 
     // ==================== APP EMBEDDING ====================
@@ -1355,12 +1490,12 @@ export class ZohoDashboard extends Component {
             const actionType = actionInfo.type;
 
             if (actionType === "ir.actions.act_window") {
-            const actionData = await this.orm.call(
-                "ir.actions.act_window",
-                "read",
-                [[numericId]],
-                { fields: ["res_model", "view_mode", "domain", "context", "name", "views", "target", "res_id"] }
-            );
+                const actionData = await this.orm.call(
+                    "ir.actions.act_window",
+                    "read",
+                    [[numericId]],
+                    { fields: ["res_model", "view_mode", "domain", "context", "name", "views", "target", "res_id"] }
+                );
 
                 if (actionData && actionData.length) {
                     const action = actionData[0];
@@ -1376,7 +1511,7 @@ export class ZohoDashboard extends Component {
                     this.embeddedState.currentDomain = domain;
                     this.embeddedState.currentContext = context;
                     this.embeddedState.currentResId = action.res_id || false;
-                    this.embeddedState.currentActionId = numericId; // CRITICAL for calendar
+                    this.embeddedState.currentActionId = numericId;
                     this.embeddedState.isClientAction = false;
 
                     if (action.name) {
@@ -1430,7 +1565,7 @@ export class ZohoDashboard extends Component {
         } catch (error) {
             console.error("Failed to load action:", error);
             this.embeddedState.errorMessage = error.message || "Failed to load action";
-            this.embeddedState.loading = false; // Ensure loading is cleared on error
+            this.embeddedState.loading = false;
         }
     }
 
@@ -1455,6 +1590,13 @@ export class ZohoDashboard extends Component {
 
         if (previousState.isClientAction) {
             this.loadClientAction(previousState.actionId);
+        } else if (previousState.viewType === "calendar") {
+            this.loadCalendarViaAction(
+                previousState.resModel,
+                previousState.title,
+                previousState.domain,
+                previousState.context
+            );
         } else {
             this.buildDynamicViewProps(
                 previousState.resModel,
@@ -1516,7 +1658,7 @@ export class ZohoDashboard extends Component {
 
             if (reportAction) {
                 const reportUrl = `/report/${reportAction.report_type}/${reportAction.report_name}`;
-                window.open(reportUrl, "_blank");
+                                window.open(reportUrl, "_blank");
                 this.notification.add(_t("Report opened in new tab"), { type: "info" });
             }
         } catch (error) {
@@ -1666,12 +1808,21 @@ export class ZohoDashboard extends Component {
             this.embeddedState.currentResId = false;
             this.embeddedState.viewTitle = crumb.name;
             
-            this.buildDynamicViewProps(
-                this.embeddedState.currentResModel,
-                viewType,
-                this.embeddedState.currentDomain,
-                this.embeddedState.currentContext
-            );
+            if (viewType === "calendar") {
+                this.loadCalendarViaAction(
+                    this.embeddedState.currentResModel,
+                    crumb.name,
+                    this.embeddedState.currentDomain,
+                    this.embeddedState.currentContext
+                );
+            } else {
+                this.buildDynamicViewProps(
+                    this.embeddedState.currentResModel,
+                    viewType,
+                    this.embeddedState.currentDomain,
+                    this.embeddedState.currentContext
+                );
+            }
         }
     }
 

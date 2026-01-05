@@ -153,46 +153,47 @@
                         <!-- ==================== EMBEDDED VIEW ==================== -->
                         <t t-if="embeddedState.isEmbeddedMode">
                             <div class="zoho_embedded_view_container" t-ref="embeddedContainer">
-                                <t t-if="embeddedState.loading">
-                                    <div class="embedded_loader">
-                                        <div class="zoho_spinner"/>
-                                        <p>Loading view...</p>
-                                    </div>
-                                </t>
-                                <t t-elif="embeddedState.errorMessage">
-                                    <div class="embedded_error">
-                                        <div class="error_icon">⚠️</div>
-                                        <p t-esc="embeddedState.errorMessage"/>
-                                        <div class="error_buttons">
-                                            <button class="btn_primary" t-on-click="closeEmbeddedView">Return to Dashboard</button>
-                                        </div>
-                                    </div>
-                                </t>
-                                <t t-elif="embeddedState.isClientAction and embeddedState.clientActionComponent">
-                                    <!-- CLIENT ACTION RENDERING -->
-                                    <div class="embedded_client_action_wrapper"
-                                         t-att-data-action-tag="embeddedState.clientActionProps?.action?.tag">
-                                        <DynamicAction 
-                                            component="embeddedState.clientActionComponent" 
-                                            t-props="embeddedState.clientActionProps"/>
-                                    </div>
-                                </t>
-                                <t t-elif="embeddedState.viewProps and embeddedState.viewProps.resModel">
-                                    <!-- STANDARD VIEW RENDERING -->
-                                    <div class="embedded_view_wrapper">
-                                        <View 
-                                            t-props="embeddedState.viewProps" 
-                                            t-key="embeddedState.viewKey"
-                                        />
-                                    </div>
-                                </t>
-                                <t t-else="">
-                                    <div class="embedded_error">
-                                        <div class="error_icon">🔭</div>
-                                        <p>No view available</p>
+                                <!-- LOADER: Only show when explicitly loading -->
+                                <div t-if="embeddedState.loading" class="embedded_loader">
+                                    <div class="zoho_spinner"/>
+                                    <p>Loading view...</p>
+                                </div>
+                                
+                                <!-- ERROR: Show if there's an error message -->
+                                <div t-if="!embeddedState.loading and embeddedState.errorMessage" class="embedded_error">
+                                    <div class="error_icon">⚠️</div>
+                                    <p t-esc="embeddedState.errorMessage"/>
+                                    <div class="error_buttons">
                                         <button class="btn_primary" t-on-click="closeEmbeddedView">Return to Dashboard</button>
                                     </div>
-                                </t>
+                                </div>
+                                
+                                <!-- CLIENT ACTION: When we have a client action component -->
+                                <div t-if="!embeddedState.loading and !embeddedState.errorMessage and embeddedState.isClientAction and embeddedState.clientActionComponent"
+                                    class="embedded_client_action_wrapper"
+                                    t-att-data-action-tag="embeddedState.clientActionProps?.action?.tag">
+                                    <DynamicAction 
+                                        component="embeddedState.clientActionComponent" 
+                                        t-props="embeddedState.clientActionProps"/>
+                                </div>
+                                
+                                <!-- STANDARD VIEW: When we have viewProps for a standard view -->
+                                <div t-if="!embeddedState.loading and !embeddedState.errorMessage and !embeddedState.isClientAction and embeddedState.viewProps and embeddedState.viewProps.resModel"
+                                    class="embedded_view_wrapper" 
+                                    t-att-data-view-type="embeddedState.currentViewType"
+                                    t-att-data-res-model="embeddedState.viewProps.resModel">
+                                    <View 
+                                        t-props="embeddedState.viewProps" 
+                                        t-key="embeddedState.viewKey"
+                                    />
+                                </div>
+                                
+                                <!-- FALLBACK: Nothing ready but not in any other state -->
+                                <div t-if="!embeddedState.loading and !embeddedState.errorMessage and !embeddedState.isClientAction and !embeddedState.viewProps" 
+                                    class="embedded_error">
+                                    <div class="error_icon">🔄</div>
+                                    <p>Initializing view...</p>
+                                </div>
                             </div>
                         </t>
 

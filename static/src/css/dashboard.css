@@ -1,6 +1,7 @@
 /* ============================================
    ZOHO STYLE DASHBOARD - COMPLETE SPA CSS
    Odoo 18 Community Edition
+   FIXED: Dashboard scrolling and Calendar rendering
    ============================================ */
 
 :root {
@@ -91,6 +92,7 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
 .embedded_view_wrapper .o_control_panel {
     overflow: visible;
     z-index: 100;
+    flex-shrink: 0;
 }
 
 .embedded_view_wrapper .o_cp_top,
@@ -162,7 +164,7 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
     flex-direction: column;
     overflow: auto;
     position: relative;
-    min-height: 0; /* Important for flex children to scroll */
+    min-height: 0;
 }
 
 /* When embedded view is active, container needs to properly contain it */
@@ -171,240 +173,313 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
 }
 
 .zoho_embedded_view_container {
-    position: absolute !important;
-    inset: 0 !important;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
     background: var(--bg-card);
-    display: flex !important;
-    flex-direction: column !important;
-    overflow: hidden !important;  /* Container doesn't scroll */
+    overflow: hidden;
+    min-height: 0;
+    position: relative;
 }
 
-/* Client action wrapper - contains client actions like Dashboards */
+/* ============ CLIENT ACTION WRAPPER - SCROLLING FIX ============ */
+
+/* Client action wrapper - base styles */
 .embedded_client_action_wrapper {
-    position: absolute !important;
-    inset: 0 !important;
-    display: flex !important;
-    flex-direction: column !important;
-    overflow: hidden !important;  /* Container itself doesn't scroll */
-    background: #fff !important;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: #fff;
+    min-height: 0;
+    height: 100%;
+    position: relative;
+    overflow: hidden;
 }
 
-/* The child content scrolls, not the wrapper */
+/* Direct children get flex layout */
 .embedded_client_action_wrapper > * {
-    flex: 1 !important;
-    min-height: 0 !important;  /* Critical for flex overflow */
-    max-height: 100% !important;
-    overflow: auto !important;  /* Children scroll */
-}
-
-/* Dashboard content should be contained */
-.embedded_client_action_wrapper .o-dashboard {
-    max-height: 100% !important;
-    overflow:  auto !important;
-}
-
-/* Spreadsheet dashboard specific - prevent infinite growth */
-.embedded_client_action_wrapper .o_spreadsheet_dashboard,
-.embedded_client_action_wrapper .o_dashboard_view {
-    height: 100% !important;
-    max-height: 100% !important;
-    overflow: auto !important;
-}
-
-/* Ensure the view controller fills but doesn't exceed container */
-.embedded_client_action_wrapper .o_view_controller,
-.embedded_client_action_wrapper .o_action {
-    height: 100% !important;
-    max-height: 100% !important;
-    display: flex !important;
-    flex-direction: column !important;
-    overflow: hidden !important;
-}
-
-.embedded_client_action_wrapper .o_action .o_content {
-    flex: 1 !important;
-    min-height: 0 !important;
-    overflow: auto !important;
-}
-
-/* ============ DYNAMIC CLIENT ACTION STYLING ============ */
-
-/* Ensure view wrapper for standard views - scrollable content, visible dropdowns */
-.zoho_embedded_view_container > .embedded_view_wrapper {
     flex: 1;
-    display: flex;
-    flex-direction: column;
     min-height: 0;
-}
-
-/* Client action wrapper should allow internal scrolling */
-.zoho_embedded_view_container > .embedded_client_action_wrapper {
-    overflow: hidden;
-}
-
-.embedded_view_wrapper {
-    flex: 1 !important;
-    position: relative !important;
-    overflow: auto !important;  /* This scrolls */
-    min-height: 0 !important;  /* Critical for flex overflow */
-}
-
-
-.embedded_view_wrapper[data-view-type="list"],
-.embedded_view_wrapper[data-view-type="kanban"],
-.embedded_view_wrapper[data-view-type="form"] {
-    overflow: visible;
-}
-
-/* The View component renders an o_action wrapper */
-.embedded_view_wrapper > .o_action {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    height: 100%;
-}
-
-/* Make sure the view controller fills space */
-.embedded_view_wrapper .o_view_controller {
-    height: 100% !important;
-    display: flex !important;
-    flex-direction: column !important;
-    overflow: hidden !important;
-}
-
-.embedded_view_wrapper .o_content {
-    flex: 1 !important;
-    overflow: auto !important;
-    padding: 0 !important;
-    min-height: 0 !important;
-}
-
-/* Action container for client actions */
-.embedded_action_container {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    background: var(--bg-card);
-    min-height: 0;
-}
-
-.embedded_action_container .o_action_manager {
-    height: 100%;
     width: 100%;
     display: flex;
     flex-direction: column;
 }
 
-.embedded_action_container .o_action {
-    height: 100%;
+/* Action containers */
+.embedded_client_action_wrapper .o_action,
+.embedded_client_action_wrapper .o_action_manager {
+    flex: 1;
     display: flex;
     flex-direction: column;
+    min-height: 0;
+    height: 100%;
 }
 
-/* ============ CLIENT ACTION LOADING NOTICE ============ */
-
-.client_action_notice {
+/* View controller */
+.embedded_client_action_wrapper .o_view_controller {
+    flex: 1;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-    padding: 60px 40px;
-    text-align: center;
+    min-height: 0;
+}
+
+/* Control panel stays fixed */
+.embedded_client_action_wrapper .o_control_panel {
+    flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    z-index: 10;
     background: var(--bg-card);
 }
 
-.notice_icon {
-    font-size: 64px;
-    margin-bottom: 24px;
-    animation: rotate 2s linear infinite;
+/* Content area - this is where scroll happens */
+.embedded_client_action_wrapper .o_content {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    height: 100%;
 }
 
-@keyframes rotate {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-}
+/* ============ SPREADSHEET DASHBOARD SPECIFIC ============ */
 
-.client_action_notice h3 {
-    font-size: 24px;
-    font-weight: 600;
-    color: var(--text-dark);
-    margin: 0 0 12px;
-}
-
-.notice_text {
-    font-size: 16px;
-    color: var(--text-medium);
-    margin: 0;
-}
-
-.client_action_description {
-    font-size: 16px;
-    color: var(--text-medium);
-    margin: 0 0 32px;
-    max-width: 400px;
-}
-
-.client_action_buttons {
-    display: flex;
-    gap: 16px;
-    flex-wrap: wrap;
-    justify-content: center;
-}
-
-.btn_large {
-    padding: 14px 32px !important;
-    font-size: 15px !important;
-}
-
-.client_action_hint {
-    margin-top: 32px;
-    color: var(--text-light);
-}
-
-.client_action_hint small {
-    font-size: 12px;
-}
-
-/* Error state for client actions */
-.embedded_client_action_error {
+/* Spreadsheet dashboard action */
+.embedded_client_action_wrapper .o_spreadsheet_dashboard_action {
+    flex: 1;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
+    min-height: 0;
     height: 100%;
-    padding: 40px;
-    text-align: center;
+    overflow: hidden;
 }
 
-.embedded_client_action_error .error_icon {
-    font-size: 48px;
-    margin-bottom: 16px;
+/* The scrollable dashboard content */
+.embedded_client_action_wrapper .o_spreadsheet_dashboard {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    height: auto;
+    max-height: none;
 }
 
-.embedded_client_action_error h3 {
-    font-size: 20px;
-    color: var(--text-dark);
-    margin: 0 0 8px;
+/* Dashboard content wrapper */
+.embedded_client_action_wrapper .o_spreadsheet_dashboard_group {
+    overflow: visible;
 }
 
-.embedded_client_action_error p {
-    color: var(--text-medium);
-    margin: 0 0 8px;
+/* General dashboard class */
+.embedded_client_action_wrapper .o_dashboard {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
 }
 
-.embedded_client_action_error .error_hint {
-    font-size: 13px;
-    color: var(--text-light);
-    margin-bottom: 24px;
-}
+/* ============ STANDARD VIEW WRAPPER ============ */
 
-.embedded_client_action_error .error_buttons {
+.embedded_view_wrapper {
+    flex: 1;
     display: flex;
-    gap: 12px;
+    flex-direction: column;
+    min-height: 0;
+    height: 100%;
+    position: relative;
 }
+
+/* View component and action wrapper */
+.embedded_view_wrapper > .o_action,
+.embedded_view_wrapper > * {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    height: 100%;
+}
+
+/* View controller fills space */
+.embedded_view_wrapper .o_view_controller {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    height: 100%;
+}
+
+/* Content area scrolls */
+.embedded_view_wrapper .o_content {
+    flex: 1;
+    overflow: auto;
+    min-height: 0;
+    padding: 0;
+}
+
+/* ============ CALENDAR VIEW SPECIFIC ============ */
+
+/* Calendar embedded wrapper */
+.embedded_view_wrapper[data-view-type="calendar"] {
+    height: 100%;
+    min-height: 500px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.embedded_view_wrapper[data-view-type="calendar"] > * {
+    flex: 1;
+    min-height: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Calendar view needs explicit height */
+.embedded_view_wrapper[data-view-type="calendar"] .o_calendar_view,
+.embedded_view_wrapper .o_calendar_view {
+    height: 100% !important;
+    min-height: 500px !important;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Calendar renderer */
+.embedded_view_wrapper .o_calendar_renderer {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+    height: 100%;
+}
+
+/* FullCalendar needs explicit dimensions */
+.embedded_view_wrapper .fc {
+    height: 100% !important;
+    min-height: 450px !important;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.embedded_view_wrapper .fc-view-harness {
+    height: 100% !important;
+    min-height: 400px !important;
+    flex: 1;
+}
+
+.embedded_view_wrapper .fc-view-harness-active {
+    position: absolute !important;
+    inset: 0 !important;
+}
+
+/* Calendar sidebar */
+.embedded_view_wrapper .o_calendar_sidebar {
+    flex-shrink: 0;
+    overflow-y: auto;
+    max-height: 100%;
+}
+
+/* Time Off dashboard calendar */
+.embedded_view_wrapper .o_hr_holidays_dashboard,
+.embedded_view_wrapper .o_leave_stats_dashboard {
+    height: 100%;
+    overflow: auto;
+}
+
+.embedded_view_wrapper .o_hr_holidays_dashboard .o_calendar_view {
+    min-height: 500px;
+}
+
+/* Calendar event interactions */
+.embedded_view_wrapper .fc-event {
+    cursor: pointer;
+}
+
+.embedded_view_wrapper .fc-day {
+    cursor: pointer;
+}
+
+/* Calendar popover fixes */
+.embedded_view_wrapper .o_cw_popover,
+.embedded_view_wrapper .fc-popover {
+    z-index: 10010 !important;
+}
+
+/* ============ LIST VIEW ============ */
+
+.embedded_view_wrapper .o_list_view {
+    margin: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.embedded_view_wrapper .o_list_renderer {
+    flex: 1;
+    overflow: auto;
+    min-height: 0;
+}
+
+.embedded_view_wrapper .o_list_table {
+    margin-bottom: 0;
+}
+
+/* ============ KANBAN VIEW ============ */
+
+.embedded_view_wrapper .o_kanban_view {
+    padding: 16px;
+    background: var(--bg-page);
+    height: 100%;
+    overflow: auto;
+}
+
+.embedded_view_wrapper .o_kanban_renderer {
+    overflow: auto;
+    height: 100%;
+}
+
+.embedded_view_wrapper .o_kanban_record {
+    margin: 8px;
+    box-shadow: var(--shadow-sm);
+    border-radius: var(--radius);
+}
+
+/* ============ FORM VIEW ============ */
+
+.embedded_view_wrapper .o_form_view {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.embedded_view_wrapper .o_form_view .o_content {
+    flex: 1;
+    overflow: auto;
+    min-height: 0;
+}
+
+.embedded_view_wrapper .o_form_renderer {
+    overflow: auto;
+}
+
+/* Smart button click handling */
+.embedded_view_wrapper .oe_stat_button,
+.embedded_view_wrapper .o_stat_info,
+.embedded_view_wrapper .o_form_uri {
+    pointer-events: auto !important;
+}
+
+/* Ensure form buttons are fully interactive */
+.embedded_view_wrapper .o_form_button_edit,
+.embedded_view_wrapper .o_form_button_save,
+.embedded_view_wrapper .o_form_button_cancel,
+.embedded_view_wrapper .o_form_button_create {
+    pointer-events: auto !important;
+    cursor: pointer !important;
+}
+
+/* Fix button group styling */
+.embedded_view_wrapper .o_statusbar_buttons {
+    display: flex !important;
+    gap: 8px;
+}
+
 /* ============ FULLSCREEN LOADER ============ */
 
 .zoho_fullscreen_loader {
@@ -436,6 +511,59 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
     margin: 0;
     color: var(--text-medium);
     font-size: 14px;
+}
+
+/* ============ EMBEDDED LOADER ============ */
+
+.embedded_loader {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-card);
+    gap: 16px;
+    z-index: 100;
+}
+
+.embedded_loader p {
+    margin: 0;
+    color: var(--text-medium);
+    font-size: 14px;
+}
+
+/* ============ ERROR STATE ============ */
+
+.embedded_error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    gap: 20px;
+    color: var(--text-medium);
+    padding: 40px;
+    text-align: center;
+}
+
+.embedded_error .error_icon {
+    font-size: 48px;
+}
+
+.embedded_error p {
+    font-size: 16px;
+    margin: 0;
+}
+
+.embedded_error .error_buttons {
+    display: flex;
+    gap: 12px;
+}
+
+/* Hide redundant breadcrumbs in embedded views */
+.embedded_view_wrapper .o_control_panel .breadcrumb {
+    display: none !important;
 }
 
 /* ============ PERSISTENT SIDEBAR ============ */
@@ -485,22 +613,34 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
 }
 
 /* Custom scrollbar styling for embedded views */
-.embedded_view_wrapper::-webkit-scrollbar {
+.embedded_view_wrapper::-webkit-scrollbar,
+.embedded_client_action_wrapper::-webkit-scrollbar,
+.embedded_view_wrapper .o_content::-webkit-scrollbar,
+.embedded_client_action_wrapper .o_content::-webkit-scrollbar {
     width: 8px;
     height: 8px;
 }
 
-.embedded_view_wrapper::-webkit-scrollbar-track {
+.embedded_view_wrapper::-webkit-scrollbar-track,
+.embedded_client_action_wrapper::-webkit-scrollbar-track,
+.embedded_view_wrapper .o_content::-webkit-scrollbar-track,
+.embedded_client_action_wrapper .o_content::-webkit-scrollbar-track {
     background: var(--bg-hover);
     border-radius: 4px;
 }
 
-.embedded_view_wrapper::-webkit-scrollbar-thumb {
+.embedded_view_wrapper::-webkit-scrollbar-thumb,
+.embedded_client_action_wrapper::-webkit-scrollbar-thumb,
+.embedded_view_wrapper .o_content::-webkit-scrollbar-thumb,
+.embedded_client_action_wrapper .o_content::-webkit-scrollbar-thumb {
     background: var(--border);
     border-radius: 4px;
 }
 
-.embedded_view_wrapper::-webkit-scrollbar-thumb:hover {
+.embedded_view_wrapper::-webkit-scrollbar-thumb:hover,
+.embedded_client_action_wrapper::-webkit-scrollbar-thumb:hover,
+.embedded_view_wrapper .o_content::-webkit-scrollbar-thumb:hover,
+.embedded_client_action_wrapper .o_content::-webkit-scrollbar-thumb:hover {
     background: var(--text-light);
 }
 
@@ -708,7 +848,7 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
     transform: translateY(-1px);
 }
 
-/* ============ APP MENUBAR - FIXED NO SCROLL ============ */
+/* ============ APP MENUBAR ============ */
 
 .zoho_app_menubar {
     height: var(--menubar-h);
@@ -961,196 +1101,107 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
     background: rgba(255,255,255,0.3);
 }
 
-/* ============ EMBEDDED VIEW CONTAINER ============ */
+/* ============ CLIENT ACTION LOADING NOTICE ============ */
 
-.embedded_loader {
-    position: absolute;
-    inset: 0;
+.client_action_notice {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    height: 100%;
+    padding: 60px 40px;
+    text-align: center;
     background: var(--bg-card);
-    gap: 16px;
-    z-index: 100;
 }
 
-.embedded_loader p {
-    margin: 0;
+.notice_icon {
+    font-size: 64px;
+    margin-bottom: 24px;
+    animation: rotate 2s linear infinite;
+}
+
+@keyframes rotate {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.client_action_notice h3 {
+    font-size: 24px;
+    font-weight: 600;
+    color: var(--text-dark);
+    margin: 0 0 12px;
+}
+
+.notice_text {
+    font-size: 16px;
     color: var(--text-medium);
-    font-size: 14px;
-}
-
-/* Hide redundant breadcrumbs in embedded views */
-.embedded_view_wrapper .o_control_panel .breadcrumb {
-    display: none !important;
-}
-
-/* List view adjustments */
-.embedded_view_wrapper .o_list_view {
     margin: 0;
-    height: 100%;
+}
+
+.client_action_description {
+    font-size: 16px;
+    color: var(--text-medium);
+    margin: 0 0 32px;
+    max-width: 400px;
+}
+
+.client_action_buttons {
     display: flex;
-    flex-direction: column;
+    gap: 16px;
+    flex-wrap: wrap;
+    justify-content: center;
 }
 
-.embedded_view_wrapper .o_list_renderer {
-    flex: 1;
-    overflow: auto;
-    min-height: 0;
+.btn_large {
+    padding: 14px 32px !important;
+    font-size: 15px !important;
 }
 
-.embedded_view_wrapper .o_list_table {
-    margin-bottom: 0;
+.client_action_hint {
+    margin-top: 32px;
+    color: var(--text-light);
 }
 
-/* Kanban view adjustments */
-.embedded_view_wrapper .o_kanban_view {
-    padding: 16px;
-    background: var(--bg-page);
-    height: 100%;
-    overflow: auto;
+.client_action_hint small {
+    font-size: 12px;
 }
 
-.embedded_view_wrapper .o_kanban_renderer {
-    overflow: auto;
-    height: 100%;
-}
-
-.embedded_view_wrapper .o_kanban_record {
-    margin: 8px;
-    box-shadow: var(--shadow-sm);
-    border-radius: var(--radius);
-}
-
-/* Form view scrolling */
-.embedded_view_wrapper .o_form_view {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-}
-
-.embedded_view_wrapper .o_form_view .o_content {
-    flex: 1;
-    overflow: auto;
-    min-height: 0;
-}
-
-.embedded_view_wrapper .o_form_renderer {
-    overflow: auto;
-}
-
-/* Calendar view adjustments */
-.embedded_view_wrapper .o_calendar_view {
-    height: 100% !important;
-    display: flex !important;
-    flex-direction: column !important;
-    overflow: hidden !important;
-}
-
-.embedded_view_wrapper .o_calendar_container {
-    flex: 1 !important;
-    min-height: 0 !important;
-    display: flex !important;
-    flex-direction: column !important;
-}
-
-/* Calendar renderer needs to fill space */
-.embedded_view_wrapper .o_calendar_renderer {
-    flex: 1 !important;
-    min-height: 0 !important;
-    display: flex !important;
-    flex-direction: column !important;
-    overflow: hidden !important;
-}
-
-/* FullCalendar main container */
-.embedded_view_wrapper .fc {
-    flex: 1 !important;
-    min-height: 400px !important;
-}
-
-.embedded_view_wrapper .fc-view-harness {
-    flex: 1;
-    min-height: 300px;
-}
-
-/* Calendar sidebar (filter panel) */
-.embedded_view_wrapper .o_calendar_sidebar {
-    flex-shrink: 0;
-    overflow-y: auto;
-    max-height: 100%;
-}
-
-/* Time Off dashboard calendar */
-.embedded_view_wrapper .o_hr_holidays_dashboard,
-.embedded_view_wrapper .o_leave_stats_dashboard {
-    height: 100%;
-    overflow: auto;
-}
-
-.embedded_view_wrapper .o_hr_holidays_dashboard .o_calendar_view {
-    min-height: 500px;
-}
-
-/* Ensure FullCalendar toolbar is visible */
-.embedded_view_wrapper .fc-header-toolbar {
-    padding: 8px 16px;
-    margin-bottom: 0;
-    flex-shrink: 0;
-}
-
-/* Calendar event interactions */
-.embedded_view_wrapper .fc-event {
-    cursor: pointer;
-}
-
-.embedded_view_wrapper .fc-day {
-    cursor: pointer;
-}
-
-/* Error state */
-.embedded_error {
+/* Error state for client actions */
+.embedded_client_action_error {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     height: 100%;
-    gap: 20px;
-    color: var(--text-medium);
     padding: 40px;
     text-align: center;
 }
 
-.embedded_error .error_icon {
+.embedded_client_action_error .error_icon {
     font-size: 48px;
+    margin-bottom: 16px;
 }
 
-.embedded_error p {
-    font-size: 16px;
-    margin: 0;
+.embedded_client_action_error h3 {
+    font-size: 20px;
+    color: var(--text-dark);
+    margin: 0 0 8px;
 }
 
-/* Smart button click handling */
-.embedded_view_wrapper .oe_stat_button,
-.embedded_view_wrapper .o_stat_info,
-.embedded_view_wrapper .o_form_uri {
-    pointer-events: auto !important;
+.embedded_client_action_error p {
+    color: var(--text-medium);
+    margin: 0 0 8px;
 }
 
-/* Ensure form buttons are fully interactive */
-.embedded_view_wrapper .o_form_button_edit,
-.embedded_view_wrapper .o_form_button_save,
-.embedded_view_wrapper .o_form_button_cancel,
-.embedded_view_wrapper .o_form_button_create {
-    pointer-events: auto !important;
-    cursor: pointer !important;
+.embedded_client_action_error .error_hint {
+    font-size: 13px;
+    color: var(--text-light);
+    margin-bottom: 24px;
 }
 
-/* Fix button group styling */
-.embedded_view_wrapper .o_statusbar_buttons {
-    display: flex !important;
-    gap: 8px;
+.embedded_client_action_error .error_buttons {
+    display: flex;
+    gap: 12px;
 }
 
 /* ============ HOME VIEW ============ */
