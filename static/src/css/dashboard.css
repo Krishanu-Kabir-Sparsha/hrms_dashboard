@@ -86,129 +86,208 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
 .zoho_spa_wrapper .o_filter_menu,
 .zoho_spa_wrapper .o_group_by_menu {
     z-index: 10000 !important;
-    overflow: visible !important;
-}
-
-.zoho_embedded_view_container,
-.embedded_view_wrapper {
-    overflow: visible !important;
 }
 
 .embedded_view_wrapper .o_control_panel {
-    overflow: visible !important;
-    z-index: 100 !important;
+    overflow: visible;
+    z-index: 100;
 }
 
 .embedded_view_wrapper .o_cp_top,
 .embedded_view_wrapper .o_cp_bottom,
 .embedded_view_wrapper .o_cp_top_left,
 .embedded_view_wrapper .o_cp_top_right {
-    overflow: visible !important;
+    overflow: visible;
 }
 
 /* Search view specific fixes */
 .embedded_view_wrapper .o_searchview {
-    overflow: visible !important;
+    overflow: visible;
 }
 
 .embedded_view_wrapper .o_searchview_dropdown {
-    position: absolute !important;
-    top: 100% !important;
-    left: 0 !important;
-    right: 0 !important;
-    z-index: 10001 !important;
-    background: var(--bg-card) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: var(--radius-sm) !important;
-    box-shadow: var(--shadow-lg) !important;
-    max-height: 400px !important;
-    overflow-y: auto !important;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 10001;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-lg);
+    max-height: 400px;
+    overflow-y: auto;
 }
 
 /* Dropdown menu positioning */
 .embedded_view_wrapper .dropdown-menu,
 .embedded_view_wrapper .o_dropdown_menu {
-    position: absolute !important;
-    z-index: 10002 !important;
-    background: var(--bg-card) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: var(--radius-sm) !important;
-    box-shadow: var(--shadow-lg) !important;
+    position: absolute;
+    z-index: 10002;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-lg);
 }
 
 /* Autocomplete dropdown */
 .embedded_view_wrapper .o-autocomplete--dropdown-menu {
-    position: absolute !important;
-    z-index: 10003 !important;
-    background: var(--bg-card) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: var(--radius-sm) !important;
-    box-shadow: var(--shadow-lg) !important;
-    max-height: 300px !important;
-    overflow-y: auto !important;
+    position: absolute;
+    z-index: 10003;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-lg);
+    max-height: 300px;
+    overflow-y: auto;
 }
 
 /* Search panel sidebar */
 .embedded_view_wrapper .o_search_panel {
-    z-index: 50 !important;
-    background: var(--bg-card) !important;
+    z-index: 50;
+    background: var(--bg-card);
 }
 
 /* Filter, Group By, Favorites menus */
 .embedded_view_wrapper .o_filter_menu,
 .embedded_view_wrapper .o_group_by_menu,
 .embedded_view_wrapper .o_favorites_menu {
-    z-index: 10004 !important;
+    z-index: 10004;
 }
 
-/* Content area should not clip search elements */
+/* Content area - must be scrollable for home view but allow dropdowns for embedded views */
 .zoho_content_container {
     flex: 1;
-    overflow: visible !important;
+    display: flex;
+    flex-direction: column;
+    overflow: auto;
     position: relative;
     min-height: 0; /* Important for flex children to scroll */
+}
+
+/* When embedded view is active, container needs to properly contain it */
+.zoho_content_container:has(.zoho_embedded_view_container) {
+    overflow: hidden;
 }
 
 .zoho_embedded_view_container {
-    position: absolute;
-    inset: 0;
+    position: absolute !important;
+    inset: 0 !important;
     background: var(--bg-card);
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;  /* Container doesn't scroll */
+}
+
+/* Client action wrapper - contains client actions like Dashboards */
+.embedded_client_action_wrapper {
+    position: absolute !important;
+    inset: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;  /* Container itself doesn't scroll */
+    background: #fff !important;
+}
+
+/* The child content scrolls, not the wrapper */
+.embedded_client_action_wrapper > * {
+    flex: 1 !important;
+    min-height: 0 !important;  /* Critical for flex overflow */
+    max-height: 100% !important;
+    overflow: auto !important;  /* Children scroll */
+}
+
+/* Dashboard content should be contained */
+.embedded_client_action_wrapper .o-dashboard {
+    max-height: 100% !important;
+    overflow:  auto !important;
+}
+
+/* Spreadsheet dashboard specific - prevent infinite growth */
+.embedded_client_action_wrapper .o_spreadsheet_dashboard,
+.embedded_client_action_wrapper .o_dashboard_view {
+    height: 100% !important;
+    max-height: 100% !important;
+    overflow: auto !important;
+}
+
+/* Ensure the view controller fills but doesn't exceed container */
+.embedded_client_action_wrapper .o_view_controller,
+.embedded_client_action_wrapper .o_action {
+    height: 100% !important;
+    max-height: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+}
+
+.embedded_client_action_wrapper .o_action .o_content {
+    flex: 1 !important;
+    min-height: 0 !important;
+    overflow: auto !important;
+}
+
+/* ============ DYNAMIC CLIENT ACTION STYLING ============ */
+
+/* Ensure view wrapper for standard views - scrollable content, visible dropdowns */
+.zoho_embedded_view_container > .embedded_view_wrapper {
+    flex: 1;
     display: flex;
     flex-direction: column;
-    overflow: visible !important;
+    min-height: 0;
+}
+
+/* Client action wrapper should allow internal scrolling */
+.zoho_embedded_view_container > .embedded_client_action_wrapper {
+    overflow: hidden;
 }
 
 .embedded_view_wrapper {
-    flex: 1;
-    position: relative;
-    overflow-y: auto;
-    overflow-x: hidden;
-    min-height: 0; /* Important for flex children to scroll */
+    flex: 1 !important;
+    position: relative !important;
+    overflow: auto !important;  /* This scrolls */
+    min-height: 0 !important;  /* Critical for flex overflow */
 }
 
-/* Make sure the view controller allows overflow */
-.embedded_view_wrapper .o_view_controller {
-    height: 100%;
+
+.embedded_view_wrapper[data-view-type="list"],
+.embedded_view_wrapper[data-view-type="kanban"],
+.embedded_view_wrapper[data-view-type="form"] {
+    overflow: visible;
+}
+
+/* The View component renders an o_action wrapper */
+.embedded_view_wrapper > .o_action {
+    flex: 1;
     display: flex;
     flex-direction: column;
-    overflow: visible !important;
+    min-height: 0;
+    height: 100%;
+}
+
+/* Make sure the view controller fills space */
+.embedded_view_wrapper .o_view_controller {
+    height: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
 }
 
 .embedded_view_wrapper .o_content {
-    overflow: auto;
-    padding: 0;
-    flex: 1;
-    min-height: 0; /* Important for flex children to scroll */
+    flex: 1 !important;
+    overflow: auto !important;
+    padding: 0 !important;
+    min-height: 0 !important;
 }
 
 /* Action container for client actions */
 .embedded_action_container {
-    position: absolute;
-    inset: 0;
-    overflow: hidden;
-    background: var(--bg-card);
+    flex: 1;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
+    background: var(--bg-card);
+    min-height: 0;
 }
 
 .embedded_action_container .o_action_manager {
@@ -222,84 +301,6 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
     height: 100%;
     display: flex;
     flex-direction: column;
-}
-
-/* ============ EMBEDDED CLIENT ACTION WRAPPER ============ */
-
-.o_embedded_client_wrapper {
-    position: absolute !important;
-    inset: 0 !important;
-    display: flex !important;
-    flex-direction: column !important;
-    overflow: hidden !important;
-    background: white !important;
-    z-index: 50 !important;
-}
-
-.o_embedded_client_wrapper .o_action_manager {
-    position: absolute !important;
-    inset: 0 !important;
-    height: 100% !important;
-    width: 100% !important;
-    display: flex !important;
-    flex-direction: column !important;
-    overflow: hidden !important;
-}
-
-.o_embedded_client_wrapper .o_action {
-    height: 100% !important;
-    width: 100% !important;
-    display: flex !important;
-    flex-direction: column !important;
-    overflow: hidden !important;
-    position: absolute !important;
-    inset: 0 !important;
-}
-
-/* Discuss/Mail specific styles */
-.o_embedded_client_wrapper .o-mail-Discuss,
-.o_embedded_client_wrapper .o_discuss_container,
-.o_embedded_client_wrapper .o_mail_thread {
-    height: 100% !important;
-    width: 100% !important;
-    display: flex !important;
-    flex-direction: column !important;
-    overflow: hidden !important;
-}
-
-.o_embedded_client_wrapper .o-mail-DiscussSidebar {
-    width: 300px !important;
-    max-width: 40% !important;
-    height: 100% !important;
-    border-right: 1px solid var(--border) !important;
-    overflow-y: auto !important;
-    flex-shrink: 0 !important;
-}
-
-.o_embedded_client_wrapper .o-mail-Discuss-content {
-    flex: 1 !important;
-    display: flex !important;
-    flex-direction: column !important;
-    min-height: 0 !important;
-    overflow: hidden !important;
-}
-
-/* Dashboard specific styles */
-.o_embedded_client_wrapper .o_dashboard_container,
-.o_embedded_client_wrapper .o_dashboard {
-    height: 100% !important;
-    width: 100% !important;
-    overflow: auto !important;
-}
-
-/* Dropdowns and modals must be visible */
-.o_embedded_client_wrapper .dropdown-menu,
-.o_embedded_client_wrapper .o_popover,
-.o_embedded_client_wrapper .modal,
-.o_embedded_client_wrapper .o_dropdown_menu,
-.o_embedded_client_wrapper .o_searchview_dropdown {
-    z-index: 10000 !important;
-    position: absolute !important;
 }
 
 /* ============ CLIENT ACTION LOADING NOTICE ============ */
@@ -969,9 +970,9 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    background: rgba(255,255,255,0.95);
+    background: var(--bg-card);
     gap: 16px;
-    z-index: 10;
+    z-index: 100;
 }
 
 .embedded_loader p {
@@ -1041,54 +1042,71 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
 
 /* Calendar view adjustments */
 .embedded_view_wrapper .o_calendar_view {
-    padding: 16px;
-    height: 100%;
-    overflow: auto;
+    height: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
 }
 
-/* Calendar view specific fixes */
-.embedded_view_wrapper .o_calendar_view,
 .embedded_view_wrapper .o_calendar_container {
-    height: 100% !important;
-    min-height: 600px !important;
+    flex: 1 !important;
+    min-height: 0 !important;
     display: flex !important;
     flex-direction: column !important;
 }
 
+/* Calendar renderer needs to fill space */
+.embedded_view_wrapper .o_calendar_renderer {
+    flex: 1 !important;
+    min-height: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+}
+
+/* FullCalendar main container */
 .embedded_view_wrapper .fc {
     flex: 1 !important;
-    min-height: 500px !important;
+    min-height: 400px !important;
 }
 
 .embedded_view_wrapper .fc-view-harness {
-    min-height: 400px !important;
+    flex: 1;
+    min-height: 300px;
+}
+
+/* Calendar sidebar (filter panel) */
+.embedded_view_wrapper .o_calendar_sidebar {
+    flex-shrink: 0;
+    overflow-y: auto;
+    max-height: 100%;
 }
 
 /* Time Off dashboard calendar */
 .embedded_view_wrapper .o_hr_holidays_dashboard,
 .embedded_view_wrapper .o_leave_stats_dashboard {
-    height: 100% !important;
-    overflow: auto !important;
+    height: 100%;
+    overflow: auto;
 }
 
 .embedded_view_wrapper .o_hr_holidays_dashboard .o_calendar_view {
-    min-height: 500px !important;
+    min-height: 500px;
 }
 
 /* Ensure FullCalendar toolbar is visible */
 .embedded_view_wrapper .fc-header-toolbar {
-    padding: 8px 16px !important;
-    margin-bottom: 0 !important;
-    flex-shrink: 0 !important;
+    padding: 8px 16px;
+    margin-bottom: 0;
+    flex-shrink: 0;
 }
 
 /* Calendar event interactions */
 .embedded_view_wrapper .fc-event {
-    cursor: pointer !important;
+    cursor: pointer;
 }
 
 .embedded_view_wrapper .fc-day {
-    cursor: pointer !important;
+    cursor: pointer;
 }
 
 /* Error state */
@@ -1142,7 +1160,9 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
     gap: 24px;
     padding: 24px;
     height: 100%;
-    overflow: auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 
 /* Profile Panel */
@@ -1498,6 +1518,7 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
     box-shadow: var(--shadow-sm);
     overflow: hidden;
     min-width: 0;
+    min-height: 0;
 }
 
 /* Announcement Banner */
@@ -1592,6 +1613,7 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
 .tab_panels {
     flex: 1;
     overflow-y: auto;
+    min-height: 0;
 }
 
 .tab_panel {

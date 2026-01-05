@@ -14,8 +14,14 @@ import { View } from "@web/views/view";
  * giving them access to all globally registered templates.
  */
 class DynamicAction extends Component {
-    static template = xml`<t t-component="props.component" t-props="props.componentProps"/>`;
-    static props = ["component", "componentProps"];
+    static template = xml`<t t-component="props.component" t-props="componentProps"/>`;
+    static props = ["component", "action", "actionId", "*"];
+    
+    get componentProps() {
+        // Spread all props except 'component' to the child
+        const { component, ...rest } = this.props;
+        return rest;
+    }
 }
 
 export class ZohoDashboard extends Component {
@@ -279,21 +285,9 @@ export class ZohoDashboard extends Component {
                 display: none !important;
             }
             
-            /* Client action wrapper - renders inline within component tree */
-            .embedded_client_action_wrapper {
-                position: absolute;
-                inset: 0;
-                display: flex;
-                flex-direction: column;
-                overflow: auto;
-                background: #fff;
-            }
-            
-            .embedded_client_action_wrapper > * {
-                flex: 1;
-                min-height: 0;
-                display: flex;
-                flex-direction: column;
+            /* Prevent body scroll when dashboard is active */
+            .zoho-dashboard-active {
+                overflow: hidden !important;
             }
         `;
         
@@ -370,73 +364,170 @@ export class ZohoDashboard extends Component {
     }
 
     /**
-     * Known bundle mappings for client actions that require additional assets.
-     * These bundles contain the templates and additional JavaScript needed.
+     * Dynamically discover and load required bundles for a view type or action.
+     * This uses Odoo's asset registry to find what bundles are needed.
      */
-    getActionBundles(tag) {
-        // Map action tags to their required asset bundles
-        const bundleMap = {
+    async loadViewBundles(resModel, viewType) {
+        const bundlesToLoad = new Set();
+        
+        // Core view bundles
+        const viewBundleMap = {
+            'calendar': [
+                'web.assets_backend_lazy',
+                'web_calendar.calendar_assets',
+            ],
+            'gantt': [
+                'web_gantt.gantt_assets',
+            ],
+            'map': [
+                'web_map.map_assets', 
+            ],
+            'pivot': [
+                'web.assets_backend_lazy',
+            ],
+            'graph': [
+                'web.assets_backend_lazy',
+            ],
+            'activity': [
+                'mail.assets_messaging',
+            ],
+        };
+
+        if (viewBundleMap[viewType]) {
+            viewBundleMap[viewType].forEach(b => bundlesToLoad.add(b));
+        }
+
+        // Model-specific bundles
+        const modelBundleMap = {
+            'hr.leave': ['hr_holidays.assets_hr_holidays'],
+            'hr.employee': ['hr.assets_hr'],
+            'project.task': ['project.assets_project'],
+            'project.project': ['project.assets_project'],
+            'crm.lead': ['crm.assets_crm'],
+            'calendar.event': ['calendar.assets_calendar', 'web_calendar.calendar_assets'],
+            'mail.message': ['mail.assets_messaging'],
+        };
+
+        if (modelBundleMap[resModel]) {
+            modelBundleMap[resModel].forEach(b => bundlesToLoad.add(b));
+        }
+
+        // Infer bundle from model name
+        const modelParts = resModel.split('.');
+        if (modelParts.length >= 1) {
+            const moduleName = modelParts[0];
+            bundlesToLoad.add(`${moduleName}.assets_backend`);
+        }
+
+        await this.loadBundlesParallel(Array.from(bundlesToLoad));
+    }
+
+    /**
+     * Load bundles for a client action tag.
+     */
+    async loadActionBundles(tag) {
+        const bundlesToLoad = [];
+        
+        // For dashboard/spreadsheet, load Chart.js FIRST
+        if (tag.includes('dashboard') || tag.includes('spreadsheet')) {
+            bundlesToLoad.push('web.chartjs_lib');
+        }
+        
+        // Known action tag to bundle mappings
+        const actionBundleMap = {
             // Calendar
-            'calendar.action_calendar': ['calendar.assets_calendar'],
-           
+            'calendar': [
+                'web.assets_backend_lazy',
+                'web_calendar.calendar_assets', 
+                'calendar.assets_calendar',
+                'calendar.assets_backend',
+            ],
+            
             // Mail / Discuss
             'mail.action_discuss': ['mail.assets_messaging', 'mail.assets_discuss_public'],
-            'mail_action_discuss': ['mail.assets_messaging'],
             
-            // Time Off / HR Holidays
-            'hr_holidays.hr_leave_action_my_request': ['hr_holidays.assets_hr_holidays'],
-            'hr_holidays.hr_leave_action_action_approve_department': ['hr_holidays.assets_hr_holidays'],
-            'hr_holidays.action_hr_leave_dashboard': ['hr_holidays.assets_hr_holidays'],
-
             // Spreadsheet / Dashboards
-            'action_spreadsheet_dashboard': ['spreadsheet.assets_spreadsheet_dashboard', 'spreadsheet.o_spreadsheet'],
-            'spreadsheet_dashboard': ['spreadsheet.assets_spreadsheet_dashboard'],
+            'action_spreadsheet_dashboard': [
+                'spreadsheet.assets_spreadsheet_dashboard', 
+                'spreadsheet.o_spreadsheet',
+            ],
+            'spreadsheet_dashboard': [
+                'spreadsheet.assets_spreadsheet_dashboard',
+            ],
+            
+            // Time Off
+            'hr_holidays.hr_leave_action_my_request': ['hr_holidays.assets_hr_holidays'],
+            'hr_holidays.action_hr_leave_dashboard': ['hr_holidays.assets_hr_holidays'],
             
             // Project
             'project.action_view_all_task': ['project.assets_project'],
             
             // CRM
             'crm.action_pipeline': ['crm.assets_crm'],
-            'crm.crm_lead_action_pipeline': ['crm.assets_crm'],
             
             // Knowledge
             'knowledge.action_home': ['knowledge.assets_knowledge'],
         };
+
+        // Add known bundles
+        if (actionBundleMap[tag]) {
+            actionBundleMap[tag].forEach(b => {
+                if (!bundlesToLoad.includes(b)) {
+                    bundlesToLoad.push(b);
+                }
+            });
+        }
+
+        // Infer bundles from tag
+        const tagParts = tag.split('.');
+        if (tagParts.length >= 1) {
+            const moduleName = tagParts[0];
+            const inferredBundles = [
+                `${moduleName}.assets_backend`,
+                `${moduleName}.assets_${moduleName}`,
+            ];
+            inferredBundles.forEach(b => {
+                if (!bundlesToLoad.includes(b)) {
+                    bundlesToLoad.push(b);
+                }
+            });
+        }
+
+        // Load bundles sequentially for dependencies
+        console.log(`📦 Loading ${bundlesToLoad.length} bundle(s):`, bundlesToLoad);
         
-        return bundleMap[tag] || [];
+        for (const bundle of bundlesToLoad) {
+            try {
+                await loadBundle(bundle);
+                console.log(`  ✓ Loaded: ${bundle}`);
+            } catch (e) {
+                console.log(`  → Skipped: ${bundle}`);
+            }
+        }
     }
 
     /**
-     * Load required asset bundles for a client action.
+     * Load multiple bundles in parallel with error handling.
+     * Bundles that fail to load are silently skipped.
      */
-    async loadActionBundles(tag) {
-        const bundles = this.getActionBundles(tag);
-        
-        if (bundles.length === 0) {
-            // Try to infer bundle from tag (e.g., "mail.action_discuss" → "mail")
-            const moduleName = tag.split('.')[0];
-            if (moduleName && moduleName !== tag) {
-                console.log(`📦 Trying to load inferred bundle: ${moduleName}.assets_backend`);
-                try {
-                    await loadBundle(`${moduleName}.assets_backend`);
-                } catch (e) {
-                    console.log(`  → Bundle ${moduleName}.assets_backend not found, continuing...`);
-                }
-            }
-            return;
-        }
+    async loadBundlesParallel(bundles) {
+        if (!bundles || bundles.length === 0) return;
 
-        console.log(`📦 Loading ${bundles.length} bundle(s) for ${tag}:`, bundles);
-        
-        for (const bundle of bundles) {
+        console.log(`📦 Loading ${bundles.length} bundle(s):`, bundles);
+
+        const loadPromises = bundles.map(async (bundle) => {
             try {
-                console.log(`  → Loading bundle: ${bundle}`);
                 await loadBundle(bundle);
-                console.log(`  ✓ Bundle loaded: ${bundle}`);
+                console.log(`  ✓ Loaded: ${bundle}`);
+                return { bundle, success: true };
             } catch (e) {
-                console.warn(`  ✗ Failed to load bundle ${bundle}:`, e.message);
+                // Bundle might not exist or already loaded - that's OK
+                console.log(`  → Skipped: ${bundle} (${e.message || 'not found'})`);
+                return { bundle, success: false };
             }
-        }
+        });
+
+        await Promise.all(loadPromises);
     }
 
     /**
@@ -516,16 +607,24 @@ export class ZohoDashboard extends Component {
         console.log("🚀 Mounting client action in SPA:", clientAction.tag);
 
         try {
-            // Step 1: Resolve the lazy-loaded component (includes bundle loading)
-            console.log("📥 Step 1: Resolving component (with bundle loading)...");
+            // Step 1: Load all required bundles
+            console.log("📥 Step 1: Loading bundles for", clientAction.tag);
+            await this.loadActionBundles(clientAction.tag);
+            
+            // Small delay to let bundles initialize
+            await new Promise(resolve => setTimeout(resolve, 50));
+            
+            // Step 2: Resolve the component from registry
+            console.log("📥 Step 2: Resolving component...");
             const ClientComponent = await this.resolveLazyComponent(clientAction.tag);
             console.log("✅ Component resolved:", ClientComponent.name || clientAction.tag);
 
-            // Step 2: Check template
-            const templateName = ClientComponent.template;
-            console.log("🔍 Step 2: Component template:", templateName);
+            // Step 3: Verify component is valid
+            if (!ClientComponent || typeof ClientComponent !== 'function') {
+                throw new Error(`Invalid component for ${clientAction.tag}`);
+            }
 
-            // Step 3: Create action props matching Odoo's structure
+            // Step 4: Create action props
             const actionProps = {
                 action: {
                     id: clientAction.id,
@@ -539,20 +638,18 @@ export class ZohoDashboard extends Component {
                 actionId: clientAction.id,
             };
 
-            // Step 4: Set component in state - this triggers OWL to render it
-            // within our component tree, sharing all globally registered templates
-            console.log("🔧 Step 3: Setting component in state for dynamic rendering...");
-            
+            // Step 5: Set ALL state synchronously - no requestAnimationFrame!
+            console.log("🔧 Step 3: Setting component for rendering...");
             this.embeddedState.clientActionComponent = ClientComponent;
             this.embeddedState.clientActionProps = actionProps;
             this.embeddedState.clientActionMounted = true;
-            this.embeddedState.loading = false;
+            this.embeddedState.loading = false;  // Synchronous! 
             
-            console.log("✅ Client action set for rendering!");
+            console.log("✅ Client action ready!");
 
         } catch (error) {
             console.error("❌ Failed to mount client action:", error);
-            this.embeddedState.errorMessage = `Failed to load ${clientAction.name}: ${error.message}`;
+            this.embeddedState.errorMessage = `Failed to load ${clientAction.name || clientAction.tag}: ${error.message}`;
             this.embeddedState.clientActionComponent = null;
             this.embeddedState.clientActionProps = null;
             this.embeddedState.loading = false;
@@ -560,6 +657,16 @@ export class ZohoDashboard extends Component {
     }
 
     cleanup() {
+        // Clear any pending timeouts
+        if (this._calendarInitTimeout) {
+            clearTimeout(this._calendarInitTimeout);
+            this._calendarInitTimeout = null;
+        }
+        if (this._viewLoadingTimeout) {
+            clearTimeout(this._viewLoadingTimeout);
+            this._viewLoadingTimeout = null;
+        }
+        
         // Restore router
         if (this._originalPushState) {
             history.pushState = this._originalPushState;
@@ -570,14 +677,16 @@ export class ZohoDashboard extends Component {
         if (this._popstateHandler) {
             window.removeEventListener('popstate', this._popstateHandler);
         }
-
-        // Restore original action service
+        
+        // Restore action service
         if (this._originalDoAction) {
             this.actionService.doAction = this._originalDoAction;
         }
-        // Cleanup client action app
+        
+        // Cleanup client action
         this.cleanupClientAction();
         
+        // Clear timers
         if (this.timerInterval) clearInterval(this.timerInterval);
         if (this.clockInterval) clearInterval(this.clockInterval);
         if (this.announcementInterval) clearInterval(this.announcementInterval);
@@ -675,10 +784,22 @@ export class ZohoDashboard extends Component {
         this.embeddedState.clientActionMounted = false;
     }
 
+    // In dashboard.js - Add these new methods to ZohoDashboard class
+
+    /**
+     * Schedule calendar initialization after the view is rendered.
+     * Uses MutationObserver to detect when FullCalendar DOM is ready.
+     */
+
 
     // ==================== DYNAMIC EMBEDDED VIEW SYSTEM ====================
 
     async loadEmbeddedView(resModel, title, domain = [], viewType = "list", context = {}) {
+        // For calendar view, delegate entirely to loadCalendarViaAction (it manages its own state)
+        if (viewType === "calendar") {
+            return this.loadCalendarViaAction(resModel, title, domain, context);
+        }
+
         this.embeddedState.loading = true;
         this.embeddedState.errorMessage = null;
         this.embeddedState.isEmbeddedMode = true;
@@ -692,8 +813,11 @@ export class ZohoDashboard extends Component {
         this.embeddedState.currentContext = context;
         this.state.currentView = "embedded";
 
-
         try {
+
+            // Load required bundles
+            await this.loadViewBundles(resModel, viewType);
+
             const menuInfo = await this.loadMenusForModel(resModel);
             if (menuInfo.rootMenu) {
                 this.embeddedState.currentApp = {
@@ -723,25 +847,83 @@ export class ZohoDashboard extends Component {
             console.error("Failed to load embedded view:", error);
             this.embeddedState.errorMessage = error.message || "Failed to load view";
             this.embeddedState.viewProps = null;
-        } finally {
             this.embeddedState.loading = false;
         }
     }
 
-    // Add this method to handle view-specific post-mount requirements
-    async handleViewMounted(viewType) {
-        if (viewType === 'calendar') {
-            // Calendar needs a resize trigger after mount to properly render
-            await new Promise(resolve => setTimeout(resolve, 100));
-            window.dispatchEvent(new Event('resize'));
+    /**
+     * Load calendar view via action - calendar requires action context
+     */
+    async loadCalendarViaAction(resModel, title, domain = [], context = {}) {
+        // Set loading state FIRST
+        this.embeddedState.loading = true;
+        this.embeddedState.errorMessage = null;
+        this.embeddedState.viewProps = null;
+        this.embeddedState.isEmbeddedMode = true;
+        this.embeddedState.isClientAction = false;
+        this.embeddedState.clientActionComponent = null;
+        this.embeddedState.clientActionProps = null;
+        this.embeddedState.viewTitle = title;
+        this.embeddedState.currentResModel = resModel;
+        this.embeddedState.currentViewType = "calendar";
+        this.embeddedState.currentDomain = domain;
+        this.embeddedState.currentContext = context;
+        this.embeddedState.currentResId = false;
+        this.embeddedState.currentActionId = null;
+        this.embeddedState.breadcrumbs = [{ name: title, type: 'model' }];
+        this.state.currentView = "embedded";
+
+        try {
+            // Load calendar bundles
+            await this.loadViewBundles(resModel, "calendar");
             
-            // Also trigger FullCalendar's render if available
-            const calendarEl = document.querySelector('.embedded_view_wrapper .fc');
-            if (calendarEl && calendarEl.__fullCalendar) {
-                calendarEl.__fullCalendar.render();
+            // Find existing action for this model
+            let actionId = null;
+            let mergedDomain = domain;
+            let mergedContext = context;
+            
+            try {
+                const actions = await this.orm.searchRead(
+                    "ir.actions.act_window",
+                    [["res_model", "=", resModel], ["view_mode", "ilike", "calendar"]],
+                    ["id", "name", "domain", "context"],
+                    { limit: 1 }
+                );
+                if (actions.length > 0) {
+                    actionId = actions[0].id;
+                    mergedDomain = [...this.parseDomainSafe(actions[0].domain), ...domain];
+                    mergedContext = { ...this.parseContextSafe(actions[0].context), ...context };
+                }
+            } catch (e) {
+                console.warn("Could not find calendar action:", e);
             }
+
+            this.embeddedState.currentActionId = actionId;
+
+            // Set up menus
+            const menuInfo = await this.loadMenusForModel(resModel);
+            if (menuInfo.rootMenu) {
+                this.embeddedState.currentApp = { id: menuInfo.rootMenu.id, name: menuInfo.rootMenu.name };
+                this.embeddedState.currentMenus = menuInfo.children;
+                this.embeddedState.breadcrumbs = [
+                    { id: menuInfo.rootMenu.id, name: menuInfo.rootMenu.name, type: 'app' },
+                    { name: title, type: 'view' }
+                ];
+            }
+
+            await this.loadAvailableViewTypes(resModel);
+            
+            // Build and set props - this also sets loading=false
+            this.buildDynamicViewProps(resModel, "calendar", mergedDomain, mergedContext);
+            
+        } catch (error) {
+            console.error("Failed to load calendar:", error);
+            this.embeddedState.errorMessage = error.message || "Failed to load calendar";
+            this.embeddedState.viewProps = null;
+            this.embeddedState.loading = false;
         }
     }
+
 
     buildDynamicViewProps(resModel, viewType, domain = [], context = {}, resId = false) {
         const cleanDomain = this.cleanDomain(domain);
@@ -753,7 +935,6 @@ export class ZohoDashboard extends Component {
             domain: cleanDomain,
             context: {
                 ...cleanContext,
-                // Ensure edit capability is preserved
                 form_view_initial_mode: resId ? 'readonly' : 'edit',
             },
             display: {
@@ -769,12 +950,23 @@ export class ZohoDashboard extends Component {
             searchViewId: false,
             selectRecord: (resId, options) => this.handleSelectRecord(resModel, resId, options),
             createRecord: () => this.handleCreateRecord(resModel),
-            // Add lifecycle hooks for view-specific initialization
-            onViewMounted: () => this.handleViewMounted(viewType),
         };
 
+        // Add action ID if available
         if (this.embeddedState.currentActionId) {
             props.actionId = this.embeddedState.currentActionId;
+        }
+
+        // Calendar-specific configuration
+        if (viewType === "calendar") {
+            props.display = {
+                controlPanel: {
+                    "top-left": true,
+                    "top-right": true,
+                    "bottom-left": false,
+                    "bottom-right": false,
+                },
+            };
         }
 
         if (viewType === "form") {
@@ -783,12 +975,9 @@ export class ZohoDashboard extends Component {
             }
             props.loadIrFilters = false;
             props.searchViewId = undefined;
-            // Let the form view handle its own mode based on context
-            // Don't force readonly - this was blocking edit button
             props.preventEdit = false;
             props.preventCreate = false;
             
-            // Handle save/discard without page reload
             props.onSave = async (record) => {
                 this.notification.add(_t("Record saved"), { type: "success" });
             };
@@ -799,10 +988,14 @@ export class ZohoDashboard extends Component {
             };
         }
 
-
+        // CRITICAL FIX: Set all state synchronously in one batch
+        // Do NOT use requestAnimationFrame - it causes race conditions
+        this.embeddedState.errorMessage = null;
         this.embeddedState.viewKey++;
         this.embeddedState.viewProps = props;
-        this.embeddedState.errorMessage = null;
+        this.embeddedState.loading = false;  // Set synchronously! 
+        
+        console.log(`📊 View ready: ${viewType} for ${resModel}, key=${this.embeddedState.viewKey}`);
     }
 
     cleanContext(context) {
@@ -1162,12 +1355,12 @@ export class ZohoDashboard extends Component {
             const actionType = actionInfo.type;
 
             if (actionType === "ir.actions.act_window") {
-                const actionData = await this.orm.call(
-                    "ir.actions.act_window",
-                    "read",
-                    [[numericId]],
-                    { fields: ["res_model", "view_mode", "domain", "context", "name", "views", "target", "res_id"] }
-                );
+            const actionData = await this.orm.call(
+                "ir.actions.act_window",
+                "read",
+                [[numericId]],
+                { fields: ["res_model", "view_mode", "domain", "context", "name", "views", "target", "res_id"] }
+            );
 
                 if (actionData && actionData.length) {
                     const action = actionData[0];
@@ -1183,13 +1376,16 @@ export class ZohoDashboard extends Component {
                     this.embeddedState.currentDomain = domain;
                     this.embeddedState.currentContext = context;
                     this.embeddedState.currentResId = action.res_id || false;
-                    this.embeddedState.currentActionId = numericId;
+                    this.embeddedState.currentActionId = numericId; // CRITICAL for calendar
                     this.embeddedState.isClientAction = false;
 
                     if (action.name) {
                         this.embeddedState.viewTitle = action.name;
                     }
 
+                    // Load bundles for the view type
+                    await this.loadViewBundles(action.res_model, viewType);
+                    
                     await this.loadAvailableViewTypes(action.res_model);
 
                     if (!this.embeddedState.availableViewTypes.includes(viewType)) {
@@ -1197,7 +1393,13 @@ export class ZohoDashboard extends Component {
                         this.embeddedState.currentViewType = viewType;
                     }
 
-                    this.buildDynamicViewProps(action.res_model, viewType, domain, context, action.res_id || false);
+                    // For calendar view, use special loading method
+                    if (viewType === "calendar") {
+                        await this.loadCalendarViaAction(action.res_model, action.name || "Calendar", domain, context);
+                    } else {
+                        // Build props - this will also set loading = false
+                        this.buildDynamicViewProps(action.res_model, viewType, domain, context, action.res_id || false);
+                    }
                 }
             } else if (actionType === "ir.actions.client") {
                 await this.loadClientAction(numericId);
@@ -1228,6 +1430,7 @@ export class ZohoDashboard extends Component {
         } catch (error) {
             console.error("Failed to load action:", error);
             this.embeddedState.errorMessage = error.message || "Failed to load action";
+            this.embeddedState.loading = false; // Ensure loading is cleared on error
         }
     }
 
@@ -1598,11 +1801,36 @@ export class ZohoDashboard extends Component {
 
     async loadChartLibrary() {
         try {
-            if (typeof Chart === "undefined") {
-                await loadJS("https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js");
+            // First, try to load Odoo's bundled Chart.js
+            try {
+                await loadBundle('web.chartjs_lib');
+                console.log("✓ Loaded web.chartjs_lib bundle");
+            } catch (e) {
+                // Bundle might not exist, continue
             }
+            
+            // Check if Chart is now available
+            if (typeof Chart === "undefined" && typeof window.Chart === "undefined") {
+                // Load from CDN as fallback
+                await loadJS("https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js");
+                console.log("✓ Loaded Chart.js from CDN");
+            }
+            
+            // Ensure Chart is globally available
+            if (typeof Chart !== "undefined") {
+                window.Chart = Chart;
+            } else if (typeof window.Chart !== "undefined") {
+                // Already available
+            } else {
+                console.warn("Chart.js could not be loaded");
+                this.state.chartLoaded = false;
+                return;
+            }
+            
             this.state.chartLoaded = true;
+            console.log("✓ Chart.js ready globally");
         } catch (error) {
+            console.error("Failed to load Chart.js:", error);
             this.state.chartLoaded = false;
         }
     }

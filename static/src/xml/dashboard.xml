@@ -168,30 +168,21 @@
                                         </div>
                                     </div>
                                 </t>
-                                <t t-elif="embeddedState.isClientAction">
+                                <t t-elif="embeddedState.isClientAction and embeddedState.clientActionComponent">
                                     <!-- CLIENT ACTION RENDERING -->
-                                    <t t-if="embeddedState.loading">
-                                        <div class="embedded_loader">
-                                            <div class="zoho_spinner"/>
-                                            <p>Loading application...</p>
-                                        </div>
-                                    </t>
-                                    <t t-elif="embeddedState.clientActionComponent">
-                                        <!-- Render the client action component dynamically -->
-                                        <div class="embedded_client_action_wrapper">
-                                            <DynamicAction 
-                                                component="embeddedState.clientActionComponent" 
-                                                componentProps="embeddedState.clientActionProps"/>
-                                        </div>
-                                    </t>
+                                    <div class="embedded_client_action_wrapper"
+                                         t-att-data-action-tag="embeddedState.clientActionProps?.action?.tag">
+                                        <DynamicAction 
+                                            component="embeddedState.clientActionComponent" 
+                                            t-props="embeddedState.clientActionProps"/>
+                                    </div>
                                 </t>
                                 <t t-elif="embeddedState.viewProps and embeddedState.viewProps.resModel">
                                     <!-- STANDARD VIEW RENDERING -->
-                                    <div class="embedded_view_wrapper" t-att-data-view-type="embeddedState.currentViewType">
+                                    <div class="embedded_view_wrapper">
                                         <View 
                                             t-props="embeddedState.viewProps" 
                                             t-key="embeddedState.viewKey"
-                                            t-on-view-loaded="() => this.handleViewMounted(embeddedState.currentViewType)"
                                         />
                                     </div>
                                 </t>
