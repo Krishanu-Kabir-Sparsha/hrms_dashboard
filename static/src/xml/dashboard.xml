@@ -19,12 +19,13 @@
                     <nav class="zoho_sidebar_nav">
                         <t t-foreach="sidebarItems" t-as="item" t-key="item.id">
                             <div class="zoho_nav_item"
-                                 t-att-class="{
-                                     'is-active': (!embeddedState.isEmbeddedMode and state.currentView === item.id) ||
-                                                  (embeddedState.isEmbeddedMode and item.id === 'operations')
-                                 }"
-                                 t-on-click="() => this.onSidebarClick(item)"
-                                 t-att-title="item.label">
+                                t-att-class="{
+                                    'is-active': (embeddedState.activeSidebarItem === item.id) ||
+                                                (!embeddedState.activeSidebarItem and !embeddedState.isEmbeddedMode and state.currentView === item.id) ||
+                                                (!embeddedState.activeSidebarItem and !embeddedState.isEmbeddedMode and item.action === state.currentView)
+                                }"
+                                t-on-click="() => this.onSidebarClick(item)"
+                                t-att-title="item.label">
                                 <span class="nav_item_icon" t-esc="item.icon"/>
                                 <span class="nav_item_label" t-esc="item.label"/>
                             </div>
@@ -73,8 +74,8 @@
                         </div>
                     </header>
 
-                    <!-- APP SUBMENU BAR -->
-                    <t t-if="embeddedState.isEmbeddedMode and embeddedState.currentMenus.length">
+                    <!-- APP SUBMENU BAR (When embedded with menus from Operations) -->
+                    <t t-if="embeddedState.isEmbeddedMode and embeddedState.currentMenus.length > 0">
                         <div class="zoho_app_menubar">
                             <div class="menubar_items">
                                 <t t-foreach="embeddedState.currentMenus" t-as="menu" t-key="menu.id">
@@ -85,8 +86,8 @@
                                             <div class="menubar_dropdown">
                                                 <t t-foreach="menu.children" t-as="child" t-key="child.id">
                                                     <div class="menubar_dropdown_item"
-                                                         t-on-click.stop="() => this.onEmbeddedMenuClick(child)"
-                                                         t-esc="child.name"/>
+                                                        t-on-click.stop="() => this.onEmbeddedMenuClick(child)"
+                                                        t-esc="child.name"/>
                                                 </t>
                                             </div>
                                         </t>
@@ -124,21 +125,28 @@
                         </div>
                     </t>
 
-                    <!-- SIMPLE TITLE BAR (When embedded without menus) -->
+                    <!-- SIMPLE TITLE BAR (When embedded without menus - e.g., from sidebar) -->
                     <t t-if="embeddedState.isEmbeddedMode and !embeddedState.currentMenus.length">
                         <div class="zoho_embedded_titlebar">
                             <h3 t-esc="embeddedState.viewTitle"/>
                             <div class="titlebar_actions">
+                                <t t-foreach="embeddedState.availableViewTypes" t-as="viewType" t-key="viewType">
+                                    <t t-if="viewType !== 'form'">
+                                        <button class="titlebar_btn view_switch_btn" 
+                                                t-att-class="{'active': embeddedState.currentViewType === viewType}"
+                                                t-on-click="() => this.switchEmbeddedViewType(viewType)" 
+                                                t-att-title="viewType.charAt(0).toUpperCase() + viewType.slice(1) + ' View'">
+                                            <t t-if="viewType === 'list'">📋</t>
+                                            <t t-elif="viewType === 'kanban'">📊</t>
+                                            <t t-elif="viewType === 'calendar'">📅</t>
+                                            <t t-elif="viewType === 'graph'">📈</t>
+                                            <t t-elif="viewType === 'pivot'">🔢</t>
+                                            <t t-elif="viewType === 'activity'">✓</t>
+                                            <t t-else="">📄</t>
+                                        </button>
+                                    </t>
+                                </t>
                                 <button class="titlebar_btn view_switch_btn" 
-                                        t-att-class="{'active': embeddedState.currentViewType === 'list'}"
-                                        t-on-click="() => this.switchEmbeddedViewType('list')" 
-                                        title="List View">📋</button>
-                                <button class="titlebar_btn view_switch_btn" 
-                                        t-att-class="{'active': embeddedState.currentViewType === 'kanban'}"
-                                        t-on-click="() => this.switchEmbeddedViewType('kanban')" 
-                                        title="Kanban View">📊</button>
-                                <button class="titlebar_btn view_switch_btn" 
-                                        t-att-class="{'active': embeddedState.currentViewType === 'form'}"
                                         t-on-click="() => this.goBackFromForm()" 
                                         t-if="embeddedState.currentViewType === 'form'"
                                         title="Back to List">⬅️</button>
@@ -328,7 +336,7 @@
                                     </t>
 
                                     <div class="welcome_section">
-                                        <h2>Welcome back, <t t-if="state.employee" t-esc="state.employee.name.split(' ')[0]"/><t t-else="">User</t>!👋</h2>
+                                        <h2>Welcome back, <t t-if="state.employee and state.employee.name" t-esc="state.employee.name.split(' ')[0]"/><t t-else="">User</t>!👋</h2>
                                         <p>Here's what's happening today</p>
                                     </div>
 

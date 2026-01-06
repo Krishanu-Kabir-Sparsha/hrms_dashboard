@@ -62,6 +62,8 @@ export class ZohoDashboard extends Component {
             // Dynamic client action component
             clientActionComponent: null,
             clientActionProps: null,
+            // NEW: Track active sidebar item for proper highlighting
+            activeSidebarItem: null,
         });
 
         // Local State
@@ -662,42 +664,74 @@ export class ZohoDashboard extends Component {
     }
 
     cleanup() {
-        // Clear any pending timeouts
-        if (this._calendarInitTimeout) {
-            clearTimeout(this._calendarInitTimeout);
-            this._calendarInitTimeout = null;
+        try {
+            // Clear any pending timeouts
+            if (this._calendarInitTimeout) {
+                clearTimeout(this._calendarInitTimeout);
+                this._calendarInitTimeout = null;
+            }
+            if (this._viewLoadingTimeout) {
+                clearTimeout(this._viewLoadingTimeout);
+                this._viewLoadingTimeout = null;
+            }
+            
+            // Restore router
+            if (this._originalPushState) {
+                try {
+                    history.pushState = this._originalPushState;
+                } catch (e) {
+                    console.warn("Could not restore pushState:", e);
+                }
+            }
+            if (this._originalReplaceState) {
+                try {
+                    history.replaceState = this._originalReplaceState;
+                } catch (e) {
+                    console.warn("Could not restore replaceState:", e);
+                }
+            }
+            if (this._popstateHandler) {
+                try {
+                    window.removeEventListener('popstate', this._popstateHandler);
+                } catch (e) {
+                    console.warn("Could not remove popstate handler:", e);
+                }
+            }
+            
+            // Restore action service
+            if (this._originalDoAction) {
+                try {
+                    this.actionService.doAction = this._originalDoAction;
+                } catch (e) {
+                    console.warn("Could not restore doAction:", e);
+                }
+            }
+            
+            // Cleanup client action
+            this.cleanupClientAction();
+            
+            // Clear timers
+            if (this.timerInterval) clearInterval(this.timerInterval);
+            if (this.clockInterval) clearInterval(this.clockInterval);
+            if (this.announcementInterval) clearInterval(this.announcementInterval);
+            
+            // Clear chart instances
+            if (this.leaveChartInstance) {
+                try {
+                    this.leaveChartInstance.destroy();
+                } catch (e) {}
+            }
+            if (this.deptChartInstance) {
+                try {
+                    this.deptChartInstance.destroy();
+                } catch (e) {}
+            }
+            
+            document.body.classList.remove('zoho-dashboard-active');
+            this.showOdooNavbar();
+        } catch (e) {
+            console.error("Error during cleanup:", e);
         }
-        if (this._viewLoadingTimeout) {
-            clearTimeout(this._viewLoadingTimeout);
-            this._viewLoadingTimeout = null;
-        }
-        
-        // Restore router
-        if (this._originalPushState) {
-            history.pushState = this._originalPushState;
-        }
-        if (this._originalReplaceState) {
-            history.replaceState = this._originalReplaceState;
-        }
-        if (this._popstateHandler) {
-            window.removeEventListener('popstate', this._popstateHandler);
-        }
-        
-        // Restore action service
-        if (this._originalDoAction) {
-            this.actionService.doAction = this._originalDoAction;
-        }
-        
-        // Cleanup client action
-        this.cleanupClientAction();
-        
-        // Clear timers
-        if (this.timerInterval) clearInterval(this.timerInterval);
-        if (this.clockInterval) clearInterval(this.clockInterval);
-        if (this.announcementInterval) clearInterval(this.announcementInterval);
-        
-        document.body.classList.remove('zoho-dashboard-active');
-        this.showOdooNavbar();
     }
 
     hideOdooNavbar() {
@@ -848,6 +882,205 @@ export class ZohoDashboard extends Component {
         }
     }
 
+    /**
+     * Load embedded view with full menu structure
+     * This is used for sidebar items to ensure proper app context and menus
+     */
+    async loadEmbeddedViewWithMenus(resModel, title, domain = [], viewType = "list", context = {}) {
+        this.embeddedState.loading = true;
+        this.embeddedState.errorMessage = null;
+        this.embeddedState.isEmbeddedMode = true;
+        this.embeddedState.isClientAction = false;
+        this.embeddedState.clientActionComponent = null;
+        this.embeddedState.clientActionProps = null;
+        this.embeddedState.viewTitle = title;
+        this.embeddedState.currentResModel = resModel;
+        this.embeddedState.currentResId = false;
+        this.embeddedState.currentDomain = domain;
+        this.embeddedState.currentViewType = viewType;
+        this.embeddedState.currentContext = context;
+        this.state.currentView = "embedded";
+
+        try {
+            // Load required bundles
+            await this.loadViewBundles(resModel, viewType);
+
+            // Find the action for this model to get full menu context
+            let actionId = null;
+            try {
+                const actions = await this.orm.searchRead(
+                    "ir.actions.act_window",
+                    [["res_model", "=", resModel]],
+                    ["id", "name", "domain", "context", "view_mode"],
+                    { limit: 1, order: "id asc" }
+                );
+                
+                if (actions && actions.length > 0) {
+                    actionId = actions[0].id;
+                    
+                    // Merge action domain/context with provided ones
+                    const actionDomain = this.parseDomainSafe(actions[0].domain);
+                    const actionContext = this.parseContextSafe(actions[0].context);
+                    
+                    // User domain takes precedence
+                    domain = [...actionDomain.filter(d => {
+                        // Don't include duplicate employee_id domains
+                        if (Array.isArray(d) && d[0] === 'employee_id') {
+                            return !domain.some(ud => Array.isArray(ud) && ud[0] === 'employee_id');
+                        }
+                        return true;
+                    }), ...domain];
+                    
+                    context = { ...actionContext, ...context };
+                    
+                    // Check if action has calendar in view_mode
+                    const viewModes = (actions[0].view_mode || "list").split(",").map(v => v.trim());
+                    if (viewModes[0] === "tree") viewModes[0] = "list";
+                    
+                    // Use the first available view type from action
+                    if (viewModes.length > 0 && viewModes[0] !== viewType) {
+                        // Keep the requested viewType unless it's not available
+                    }
+                    
+                    this.embeddedState.currentActionId = actionId;
+                }
+            } catch (e) {
+                console.warn("Could not find action for model:", e);
+            }
+
+            // Load menus for this model - this is the key difference from loadEmbeddedView
+            const menuInfo = await this.loadMenusForModel(resModel);
+            
+            if (menuInfo && menuInfo.rootMenu) {
+                this.embeddedState.currentApp = {
+                    id: menuInfo.rootMenu.id,
+                    name: menuInfo.rootMenu.name
+                };
+                this.embeddedState.currentMenus = menuInfo.children || [];
+                this.embeddedState.breadcrumbs = [
+                    { id: menuInfo.rootMenu.id, name: menuInfo.rootMenu.name, type: 'app' },
+                    { name: title, type: 'view' }
+                ];
+            } else {
+                // Fallback - try to find root menu by searching up the menu tree
+                await this.loadMenusFromAction(actionId, title);
+            }
+
+            // Update domain and context
+            this.embeddedState.currentDomain = domain;
+            this.embeddedState.currentContext = context;
+
+            // Load available view types
+            await this.loadAvailableViewTypes(resModel);
+
+            if (!this.embeddedState.availableViewTypes.includes(viewType)) {
+                viewType = this.embeddedState.availableViewTypes[0] || "list";
+                this.embeddedState.currentViewType = viewType;
+            }
+
+            // For calendar view, use specialized method
+            if (viewType === "calendar") {
+                await this.loadCalendarViaAction(resModel, title, domain, context);
+            } else {
+                this.buildDynamicViewProps(resModel, viewType, domain, context);
+            }
+
+        } catch (error) {
+            console.error("Failed to load embedded view with menus:", error);
+            this.embeddedState.errorMessage = error.message || "Failed to load view";
+            this.embeddedState.viewProps = null;
+            this.embeddedState.loading = false;
+        }
+    }
+
+    /**
+     * Load menus from an action ID by finding its menu and parent app
+     */
+    async loadMenusFromAction(actionId, fallbackTitle) {
+        if (!actionId) {
+            this.embeddedState.currentApp = { name: fallbackTitle };
+            this.embeddedState.currentMenus = [];
+            this.embeddedState.breadcrumbs = [{ name: fallbackTitle, type: 'model' }];
+            return;
+        }
+
+        try {
+            // Find menu that references this action
+            const menus = await this.orm.searchRead(
+                "ir.ui.menu",
+                [["action", "=", `ir.actions.act_window,${actionId}`]],
+                ["id", "name", "parent_id"],
+                { limit: 1 }
+            );
+
+            if (menus && menus.length > 0) {
+                let currentMenu = menus[0];
+                let menuChain = [currentMenu];
+                
+                // Traverse up to find root menu
+                while (currentMenu.parent_id) {
+                    const parentMenus = await this.orm.searchRead(
+                        "ir.ui.menu",
+                        [["id", "=", currentMenu.parent_id[0]]],
+                        ["id", "name", "parent_id"],
+                        { limit: 1 }
+                    );
+                    
+                    if (parentMenus && parentMenus.length > 0) {
+                        currentMenu = parentMenus[0];
+                        menuChain.unshift(currentMenu);
+                    } else {
+                        break;
+                    }
+                }
+
+                // Root menu is the first in chain (no parent)
+                const rootMenu = menuChain[0];
+                
+                // Get children of root menu
+                const menuData = await this.orm.call(
+                    "ir.ui.menu",
+                    "get_menu_with_all_children",
+                    [rootMenu.id]
+                );
+
+                this.embeddedState.currentApp = {
+                    id: rootMenu.id,
+                    name: rootMenu.name
+                };
+                this.embeddedState.currentMenus = menuData?.children || [];
+                
+                // Build breadcrumbs from menu chain
+                this.embeddedState.breadcrumbs = [
+                    { id: rootMenu.id, name: rootMenu.name, type: 'app' }
+                ];
+                
+                // Add intermediate menus to breadcrumbs
+                for (let i = 1; i < menuChain.length; i++) {
+                    this.embeddedState.breadcrumbs.push({
+                        id: menuChain[i].id,
+                        name: menuChain[i].name,
+                        type: 'menu'
+                    });
+                }
+                
+                // Update title to match the actual menu name
+                if (menuChain.length > 1) {
+                    this.embeddedState.viewTitle = menuChain[menuChain.length - 1].name;
+                }
+                
+                return;
+            }
+        } catch (e) {
+            console.warn("Could not load menus from action:", e);
+        }
+
+        // Fallback
+        this.embeddedState.currentApp = { name: fallbackTitle };
+        this.embeddedState.currentMenus = [];
+        this.embeddedState.breadcrumbs = [{ name: fallbackTitle, type: 'model' }];
+    }
+
         /**
          * Load calendar view via action - calendar requires action context
          * FIXED: Proper state management and loading sequence
@@ -876,7 +1109,7 @@ export class ZohoDashboard extends Component {
             this.state.currentView = "embedded";
 
             try {
-                // Step 3: Load bundles
+                // Step 3: Load bundles with retry
                 console.log("📦 Loading calendar bundles...");
                 const calendarBundles = [
                     'web.assets_backend_lazy',
@@ -894,6 +1127,9 @@ export class ZohoDashboard extends Component {
                     }
                 }
                 
+                // Wait for bundles to initialize
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
                 // Step 4: Find calendar action
                 let actionId = null;
                 let mergedDomain = [...domain];
@@ -906,7 +1142,7 @@ export class ZohoDashboard extends Component {
                         ["id", "name", "domain", "context"],
                         { limit: 1 }
                     );
-                    if (actions.length > 0) {
+                    if (actions && actions.length > 0) {
                         actionId = actions[0].id;
                         const actionDomain = this.parseDomainSafe(actions[0].domain);
                         const actionContext = this.parseContextSafe(actions[0].context);
@@ -923,14 +1159,18 @@ export class ZohoDashboard extends Component {
                 this.embeddedState.currentContext = mergedContext;
 
                 // Step 5: Load menus
-                const menuInfo = await this.loadMenusForModel(resModel);
-                if (menuInfo.rootMenu) {
-                    this.embeddedState.currentApp = { id: menuInfo.rootMenu.id, name: menuInfo.rootMenu.name };
-                    this.embeddedState.currentMenus = menuInfo.children;
-                    this.embeddedState.breadcrumbs = [
-                        { id: menuInfo.rootMenu.id, name: menuInfo.rootMenu.name, type: 'app' },
-                        { name: title, type: 'view' }
-                    ];
+                try {
+                    const menuInfo = await this.loadMenusForModel(resModel);
+                    if (menuInfo && menuInfo.rootMenu) {
+                        this.embeddedState.currentApp = { id: menuInfo.rootMenu.id, name: menuInfo.rootMenu.name };
+                        this.embeddedState.currentMenus = menuInfo.children || [];
+                        this.embeddedState.breadcrumbs = [
+                            { id: menuInfo.rootMenu.id, name: menuInfo.rootMenu.name, type: 'app' },
+                            { name: title, type: 'view' }
+                        ];
+                    }
+                } catch (e) {
+                    console.warn("Could not load menus:", e);
                 }
 
                 await this.loadAvailableViewTypes(resModel);
@@ -966,13 +1206,12 @@ export class ZohoDashboard extends Component {
                 // Step 7: Increment key first
                 this.embeddedState.viewKey++;
                 
-                // Step 8: Set viewProps - this triggers OWL to prepare the View component
+                // Step 8: Set viewProps
                 this.embeddedState.viewProps = viewProps;
                 
                 console.log("📅 Calendar props set:", { resModel, actionId, key: this.embeddedState.viewKey });
                 
-                // Step 9: Wait for OWL to process, then set loading=false
-                // Using requestAnimationFrame ensures DOM update cycle completes
+                // Step 9: Wait for render, then set loading=false
                 await new Promise(resolve => {
                     requestAnimationFrame(() => {
                         requestAnimationFrame(() => {
@@ -983,10 +1222,22 @@ export class ZohoDashboard extends Component {
                     });
                 });
                 
-                // Step 10: Trigger resize for FullCalendar after a delay
+                // Step 10: Trigger resize for FullCalendar
                 setTimeout(() => {
                     window.dispatchEvent(new Event('resize'));
+                    // Additional resize trigger for FullCalendar
+                    const fcElements = document.querySelectorAll('.fc');
+                    fcElements.forEach(fc => {
+                        if (fc.__fullCalendar) {
+                            fc.__fullCalendar.updateSize();
+                        }
+                    });
                 }, 500);
+                
+                // Another resize after a longer delay
+                setTimeout(() => {
+                    window.dispatchEvent(new Event('resize'));
+                }, 1000);
                 
             } catch (error) {
                 console.error("❌ Failed to load calendar:", error);
@@ -1062,7 +1313,7 @@ export class ZohoDashboard extends Component {
                 loadIrFilters: true,
                 loadActionMenus: true,
                 searchViewId: false,
-                selectRecord: (resId, options) => this.handleSelectRecord(resModel, resId, options),
+                selectRecord: (id, opts) => this.handleSelectRecord(resModel, id, opts),
                 createRecord: () => this.handleCreateRecord(resModel),
             };
 
@@ -1079,10 +1330,15 @@ export class ZohoDashboard extends Component {
                 props.preventEdit = false;
                 props.preventCreate = false;
                 
+                // Better save/discard handlers
                 props.onSave = async (record) => {
+                    console.log("Form saved:", record);
                     this.notification.add(_t("Record saved"), { type: "success" });
+                    // Optionally refresh or go back
                 };
+                
                 props.onDiscard = () => {
+                    console.log("Form discarded");
                     if (this.embeddedState.breadcrumbs.length > 1) {
                         this.goBackFromForm();
                     }
@@ -1154,14 +1410,19 @@ export class ZohoDashboard extends Component {
     }
 
     async handleSelectRecord(resModel, resId, options = {}) {
+        if (!resModel || !resId) {
+            console.warn("Invalid resModel or resId for handleSelectRecord");
+            return;
+        }
+        
         let recordName = `#${resId}`;
         try {
             const records = await this.orm.read(resModel, [resId], ["display_name"]);
-            if (records.length > 0 && records[0].display_name) {
+            if (records && records.length > 0 && records[0].display_name) {
                 recordName = records[0].display_name;
             }
         } catch (e) {
-            // Use default name
+            console.warn("Could not fetch record name:", e);
         }
 
         const currentBreadcrumbs = [...this.embeddedState.breadcrumbs];
@@ -1408,6 +1669,8 @@ export class ZohoDashboard extends Component {
         this.embeddedState.loading = true;
         this.embeddedState.errorMessage = null;
 
+        // Track that we came from Operations
+        this.embeddedState.activeSidebarItem = "operations";
 
         try {
             const menuData = await this.orm.call(
@@ -1441,15 +1704,51 @@ export class ZohoDashboard extends Component {
 
             if (actionId) {
                 await this.loadActionById(actionId);
+                // After loading action, check if resModel matches a sidebar item
+                this.updateSidebarFromResModel();
             } else {
                 this.embeddedState.errorMessage = _t("No action found for ") + app.name;
+                // Default to operations if no match
+                this.embeddedState.activeSidebarItem = "operations";
             }
 
         } catch (error) {
             console.error("Failed to open app:", error);
             this.embeddedState.errorMessage = _t("Failed to open ") + app.name;
+            this.embeddedState.activeSidebarItem = "operations";
         } finally {
             this.embeddedState.loading = false;
+        }
+    }
+
+    /**
+     * Updates the active sidebar item based on the current resModel.
+     * This helps highlight the correct sidebar item when opening modules from Operations.
+     */
+    updateSidebarFromResModel() {
+        const resModel = this.embeddedState.currentResModel;
+        
+        if (!resModel) {
+            this.embeddedState.activeSidebarItem = "operations";
+            return;
+        }
+        
+        // Map of res_models to sidebar item IDs
+        const modelToSidebarMap = {
+            "hr.leave": "leave",
+            "hr.attendance": "attendance",
+            "account.analytic.line": "timesheet",
+            "hr.payslip": "payroll",
+            "hr.expense": "expense",
+        };
+        
+        const sidebarId = modelToSidebarMap[resModel];
+        
+        if (sidebarId) {
+            this.embeddedState.activeSidebarItem = sidebarId;
+        } else {
+            // Default to operations for modules not in sidebar
+            this.embeddedState.activeSidebarItem = "operations";
         }
     }
 
@@ -1518,6 +1817,9 @@ export class ZohoDashboard extends Component {
                         this.embeddedState.viewTitle = action.name;
                     }
 
+                    // Update sidebar highlighting based on resModel
+                    this.updateSidebarFromResModel();
+
                     // Load bundles for the view type
                     await this.loadViewBundles(action.res_model, viewType);
                     
@@ -1538,6 +1840,8 @@ export class ZohoDashboard extends Component {
                 }
             } else if (actionType === "ir.actions.client") {
                 await this.loadClientAction(numericId);
+                // For client actions, default to operations
+                this.embeddedState.activeSidebarItem = "operations";
             } else if (actionType === "ir.actions.act_url") {
                 const [urlAction] = await this.orm.call(
                     "ir.actions.act_url",
@@ -1560,12 +1864,14 @@ export class ZohoDashboard extends Component {
             } else {
                 this.embeddedState.errorMessage = `Action type "${actionType}" is not supported in embedded mode.`;
                 this.embeddedState.currentActionId = numericId;
+                this.embeddedState.activeSidebarItem = "operations";
             }
 
         } catch (error) {
             console.error("Failed to load action:", error);
             this.embeddedState.errorMessage = error.message || "Failed to load action";
             this.embeddedState.loading = false;
+            this.embeddedState.activeSidebarItem = "operations";
         }
     }
 
@@ -1781,6 +2087,7 @@ export class ZohoDashboard extends Component {
         this.embeddedState.currentActionId = null;
         this.embeddedState.isClientAction = false;
         this.embeddedState.clientActionMounted = false;
+        this.embeddedState.activeSidebarItem = "home"; // Reset to home
 
         this.state.currentView = "home";
         this.state.activeMainTab = "myspace";
@@ -1928,19 +2235,27 @@ export class ZohoDashboard extends Component {
     }
 
     get formattedCurrentTime() {
-        return this.state.currentTime.toLocaleTimeString('en-US', {
-            hour: '2-digit',
-            minute: '2-digit',
-        });
+        try {
+            return this.state.currentTime.toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit',
+            });
+        } catch (e) {
+            return '--:--';
+        }
     }
 
     get formattedCurrentDate() {
-        return this.state.currentTime.toLocaleDateString('en-US', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-        });
+        try {
+            return this.state.currentTime.toLocaleDateString('en-US', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+            });
+        } catch (e) {
+            return '';
+        }
     }
 
     get currentAnnouncement() {
@@ -1991,19 +2306,46 @@ export class ZohoDashboard extends Component {
             try {
                 this.state.isManager = await this.orm.call("hr.employee", "check_user_group", []);
             } catch (e) {
+                console.warn("Failed to check user group:", e);
                 this.state.isManager = false;
             }
 
             try {
                 const empDetails = await this.orm.call("hr.employee", "get_user_employee_details", []);
-                if (empDetails && empDetails[0]) {
+                if (empDetails && empDetails[0] && empDetails[0].name) {
                     this.state.employee = empDetails[0];
                     this.state.attendance = empDetails[0].attendance_lines || [];
                     this.state.leaves = empDetails[0].leave_lines || [];
                     this.state.expenses = empDetails[0].expense_lines || [];
+                } else {
+                    // Set default employee object to prevent template errors
+                    this.state.employee = {
+                        id: false,
+                        name: 'User',
+                        attendance_state: 'checked_out',
+                        job_id: false,
+                        department_id: false,
+                        work_email: '',
+                        mobile_phone: '',
+                        payslip_count: 0,
+                        emp_timesheets: 0,
+                        contracts_count: 0,
+                        broad_factor: 0,
+                        leaves_to_approve: 0,
+                        leaves_today: 0,
+                        leaves_this_month: 0,
+                        leaves_alloc_req: 0,
+                        job_applications: 0,
+                    };
                 }
             } catch (e) {
                 console.error("Failed to load employee details:", e);
+                // Set default employee object
+                this.state.employee = {
+                    id: false,
+                    name: 'User',
+                    attendance_state: 'checked_out',
+                };
             }
 
             try {
@@ -2033,6 +2375,10 @@ export class ZohoDashboard extends Component {
             await this.loadApps();
         } catch (error) {
             console.error("Failed to load initial data:", error);
+            // Ensure employee is always defined
+            if (!this.state.employee) {
+                this.state.employee = { name: 'User', attendance_state: 'checked_out' };
+            }
         } finally {
             this.state.loading = false;
         }
@@ -2164,17 +2510,20 @@ export class ZohoDashboard extends Component {
             this.state.currentView = "home";
             this.state.activeTab = "activities";
             this.state.activeMainTab = "myspace";
+            this.embeddedState.activeSidebarItem = "home";
             setTimeout(() => this.renderCharts(), 300);
         } else if (item.action === "operations") {
             if (this.embeddedState.isEmbeddedMode) {
                 this.closeEmbeddedView();
             }
             this.state.currentView = "operations";
+            this.embeddedState.activeSidebarItem = "operations";
         } else if (item.action === "profile") {
             if (this.embeddedState.isEmbeddedMode) {
                 this.closeEmbeddedView();
             }
             this.state.currentView = "profile";
+            this.embeddedState.activeSidebarItem = "profile";
         } else if (item.model) {
             this.openSidebarModel(item);
         }
@@ -2193,8 +2542,12 @@ export class ZohoDashboard extends Component {
                 domain = [["project_id", "!=", false]];
             }
         }
-        this.loadEmbeddedView(item.model, item.title || item.label, domain);
+        
+        // Use loadEmbeddedViewWithMenus instead of loadEmbeddedView
+        // This ensures menus are properly loaded for sidebar items
+        this.loadEmbeddedViewWithMenus(item.model, item.title || item.label, domain);
     }
+    
 
     onTabClick(tabId) {
         this.state.activeTab = tabId;

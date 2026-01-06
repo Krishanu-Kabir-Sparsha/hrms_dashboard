@@ -32,7 +32,7 @@ class HrEmployee(models.Model):
         if employee.attendance_state == 'checked_out': 
             # Check IN - Create new attendance record
             self.env['hr.attendance'].sudo().create({
-                'employee_id':  employee.id,
+                'employee_id': employee.id,
                 'check_in': fields.Datetime.now(),
             })
         else:
@@ -62,8 +62,34 @@ class HrEmployee(models.Model):
     def get_user_employee_details(self):
         """Get comprehensive employee details for dashboard"""
         employee = self.env.user.employee_id
+
+        # Return default if no employee found
         if not employee:
-            return [{}]
+            return [{
+                'id': False,
+                'name': 'User',
+                'image_1920': False,
+                'image_128': False,
+                'job_id': False,
+                'department_id': False,
+                'work_email': '',
+                'mobile_phone': '',
+                'work_phone': '',
+                'attendance_state': 'checked_out',
+                'experience': '-',
+                'payslip_count': 0,
+                'contracts_count': 0,
+                'emp_timesheets': 0,
+                'broad_factor': 0,
+                'leaves_to_approve': 0,
+                'leaves_today': 0,
+                'leaves_this_month': 0,
+                'leaves_alloc_req': 0,
+                'job_applications': 0,
+                'attendance_lines': [],
+                'leave_lines': [],
+                'expense_lines': [],
+            }]
 
         try:
             # Get attendance lines
@@ -96,8 +122,8 @@ class HrEmployee(models.Model):
                 'image_1920': employee.image_1920 or False,
                 'image_128': employee.image_128 or False,
                 'job_id': [employee.job_id.id, employee.job_id.name] if employee.job_id else False,
-                'department_id':  [employee.department_id.id, employee.department_id.name] if employee.department_id else False,
-                'work_email':  employee.work_email or '',
+                'department_id': [employee.department_id.id, employee.department_id.name] if employee.department_id else False,
+                'work_email': employee.work_email or '',
                 'mobile_phone': employee.mobile_phone or '',
                 'work_phone': employee.work_phone or '',
                 'attendance_state': employee.attendance_state or 'checked_out',
@@ -107,12 +133,12 @@ class HrEmployee(models.Model):
                 'emp_timesheets': emp_timesheets,
                 'broad_factor': 0,
                 'leaves_to_approve': leaves_to_approve,
-                'leaves_today':  leaves_today,
+                'leaves_today': leaves_today,
                 'leaves_this_month': leaves_this_month,
                 'leaves_alloc_req': leaves_alloc_req,
                 'job_applications': job_applications,
                 'attendance_lines': attendance_lines,
-                'leave_lines':  leave_lines,
+                'leave_lines': leave_lines,
                 'expense_lines': expense_lines,
             }]
         except Exception as e:
@@ -152,7 +178,7 @@ class HrEmployee(models.Model):
                 'draft': '#6c757d',
                 'confirm': '#ffc107',
                 'validate1': '#17a2b8',
-                'validate':  '#28a745',
+                'validate': '#28a745',
                 'refuse': '#dc3545',
             }
             
@@ -181,7 +207,7 @@ class HrEmployee(models.Model):
             state_colors = {
                 'draft': '#6c757d',
                 'reported': '#ffc107',
-                'approved':  '#17a2b8',
+                'approved': '#17a2b8',
                 'done': '#28a745',
                 'refused': '#dc3545',
             }
@@ -394,7 +420,7 @@ class HrEmployee(models.Model):
                     ('state', '=', 'validate')
                 ])
                 
-                result.append({'l_month': month_name, 'leave':  leave_count})
+                result.append({'l_month': month_name, 'leave': leave_count})
             
             return result
         except Exception: 
