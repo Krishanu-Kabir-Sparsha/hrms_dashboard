@@ -273,6 +273,92 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
     overflow: auto;
 }
 
+/* ============ TIME OFF / LEAVE DASHBOARD SPECIFIC ============ */
+
+/* Time Off Dashboard action - this is the main container */
+.embedded_view_wrapper .o_hr_leave_action_my_time_off,
+.embedded_client_action_wrapper .o_hr_leave_action_my_time_off {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* Leave stats dashboard - contains the stats cards at top */
+.embedded_view_wrapper .o_leave_stats_dashboard,
+.embedded_client_action_wrapper .o_leave_stats_dashboard {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* Leave stats header with Paid Time Off, Test, Pending Requests cards */
+.embedded_view_wrapper .o_leave_stats,
+.embedded_client_action_wrapper .o_leave_stats {
+    flex-shrink: 0;
+    padding: 16px;
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+/* Individual stat cards */
+.embedded_view_wrapper .o_leave_stat_card,
+.embedded_client_action_wrapper .o_leave_stat_card {
+    flex: 1;
+    min-width: 200px;
+    padding: 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+
+/* Leave dashboard container */
+.embedded_view_wrapper .o_hr_leave_view,
+.embedded_view_wrapper .o_hr_holidays_view {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* Leave stats section (alternative class names) */
+.embedded_view_wrapper .o_hr_leave_stats {
+    flex-shrink: 0;
+    padding: 16px;
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+}
+
+/* Leave calendar wrapper */
+.embedded_view_wrapper .o_hr_leave_calendar,
+.embedded_view_wrapper .o_leave_calendar_wrapper,
+.embedded_client_action_wrapper .o_leave_calendar_wrapper {
+    flex: 1;
+    min-height: 400px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* Make sure the calendar within leave view renders properly */
+.embedded_view_wrapper .o_hr_leave_view .o_calendar_view,
+.embedded_view_wrapper .o_hr_holidays_view .o_calendar_view,
+.embedded_view_wrapper .o_leave_stats_dashboard .o_calendar_view,
+.embedded_client_action_wrapper .o_leave_stats_dashboard .o_calendar_view {
+    flex: 1;
+    min-height: 400px;
+    height: 100%;
+}
+
+/* Leave allocation cards */
+.embedded_view_wrapper .o_leave_allocation_card {
+    flex-shrink: 0;
+}
+
 /* ============ STANDARD VIEW WRAPPER ============ */
 
 .embedded_view_wrapper {
@@ -373,17 +459,101 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
     flex-shrink: 0;
     overflow-y: auto;
     max-height: 100%;
+    min-width: 200px;
 }
 
-/* Time Off dashboard calendar */
+/* Calendar container with sidebar */
+.embedded_view_wrapper .o_calendar_container {
+    display: flex;
+    height: 100%;
+    min-height: 0;
+}
+
+.embedded_view_wrapper .o_calendar_container > .o_calendar_sidebar_container {
+    flex-shrink: 0;
+}
+
+.embedded_view_wrapper .o_calendar_container > :not(.o_calendar_sidebar_container) {
+    flex: 1;
+    min-width: 0;
+}
+
+/* FullCalendar scroller */
+.embedded_view_wrapper .fc-scroller {
+    overflow: auto !important;
+}
+
+.embedded_view_wrapper .fc-scroller-liquid-absolute {
+    position: absolute;
+    inset: 0;
+}
+
+/* Calendar header toolbar */
+.embedded_view_wrapper .fc-header-toolbar {
+    flex-shrink: 0;
+    margin-bottom: 12px !important;
+    padding: 0 8px;
+}
+
+/* Calendar daygrid/timegrid body */
+.embedded_view_wrapper .fc-daygrid-body,
+.embedded_view_wrapper .fc-timegrid-body {
+    width: 100% !important;
+}
+
+.embedded_view_wrapper .fc-daygrid-body table,
+.embedded_view_wrapper .fc-timegrid-body table {
+    width: 100% !important;
+}
+
+/* Time Off / Leave dashboard calendar */
 .embedded_view_wrapper .o_hr_holidays_dashboard,
 .embedded_view_wrapper .o_leave_stats_dashboard {
     height: 100%;
-    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
-.embedded_view_wrapper .o_hr_holidays_dashboard .o_calendar_view {
+.embedded_view_wrapper .o_hr_holidays_dashboard > *,
+.embedded_view_wrapper .o_leave_stats_dashboard > * {
+    flex: 1;
+    min-height: 0;
+}
+
+.embedded_view_wrapper .o_hr_holidays_dashboard .o_calendar_view,
+.embedded_view_wrapper .o_leave_stats_dashboard .o_calendar_view {
     min-height: 500px;
+    height: 100%;
+}
+
+/* Leave calendar specific */
+.embedded_view_wrapper .o_leave_stats_dashboard .o_leave_stats {
+    flex-shrink: 0;
+    overflow-x: auto;
+    padding: 16px;
+}
+
+.embedded_view_wrapper .o_leave_stats_dashboard .o_leave_calendar {
+    flex: 1;
+    min-height: 400px;
+    height: 100%;
+}
+
+/* Calendar mini (in sidebar) */
+.embedded_view_wrapper .o_calendar_mini {
+    max-width: 100%;
+}
+
+.embedded_view_wrapper .o_calendar_mini .fc {
+    height: auto !important;
+    min-height: auto !important;
+}
+
+/* Calendar filter panel */
+.embedded_view_wrapper .o_calendar_filter_panel {
+    overflow-y: auto;
+    max-height: calc(100% - 250px);
 }
 
 /* Calendar event interactions */
@@ -399,6 +569,157 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
 .embedded_view_wrapper .o_cw_popover,
 .embedded_view_wrapper .fc-popover {
     z-index: 10010 !important;
+}
+
+/* FullCalendar specific fixes for proper sizing */
+.embedded_view_wrapper .fc-view {
+    height: 100%;
+}
+
+.embedded_view_wrapper .fc-dayGridMonth-view,
+.embedded_view_wrapper .fc-timeGridWeek-view,
+.embedded_view_wrapper .fc-timeGridDay-view {
+    height: 100%;
+}
+
+/* Fix scrollbar showing in daygrid */
+.embedded_view_wrapper .fc-dayGridMonth-view .fc-scroller {
+    overflow: hidden auto !important;
+}
+
+/* Timegrid (week/day view) specific fixes */
+.embedded_view_wrapper .fc-timegrid {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.embedded_view_wrapper .fc-timegrid-body {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+}
+
+.embedded_view_wrapper .fc-timegrid-slots {
+    height: auto;
+}
+
+.embedded_view_wrapper .fc-timegrid-slot {
+    height: 40px;
+    min-height: 40px;
+}
+
+/* Fix timegrid scroller */
+.embedded_view_wrapper .fc-timeGridWeek-view .fc-scroller,
+.embedded_view_wrapper .fc-timeGridDay-view .fc-scroller {
+    overflow: auto !important;
+}
+
+/* Fix timegrid event column sizing */
+.embedded_view_wrapper .fc-timegrid-cols {
+    position: relative;
+}
+
+.embedded_view_wrapper .fc-timegrid-col {
+    position: relative;
+}
+
+/* All-day section */
+.embedded_view_wrapper .fc-daygrid-body {
+    width: 100% !important;
+}
+
+/* Calendar view harness - CRITICAL for proper sizing */
+.embedded_view_wrapper .fc-view-harness {
+    flex: 1;
+    min-height: 400px;
+    position: relative;
+}
+
+.embedded_view_wrapper .fc-view-harness-active {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+}
+
+/* Time Off Dashboard specific - ensure stats are visible */
+.embedded_view_wrapper .o_hr_holidays_dashboard,
+.embedded_client_action_wrapper .o_hr_holidays_dashboard {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.embedded_view_wrapper .o_hr_holidays_dashboard .o_leave_stats_dashboard,
+.embedded_client_action_wrapper .o_hr_holidays_dashboard .o_leave_stats_dashboard {
+    flex-shrink: 0;
+}
+
+.embedded_view_wrapper .o_hr_holidays_dashboard .o_calendar_view,
+.embedded_client_action_wrapper .o_hr_holidays_dashboard .o_calendar_view {
+    flex: 1;
+    min-height: 400px;
+}
+
+/* Time Off My Request view - full dashboard with stats header */
+.embedded_view_wrapper .o_hr_leave_view_my,
+.embedded_client_action_wrapper .o_hr_leave_view_my,
+.embedded_view_wrapper .o_my_time_off,
+.embedded_client_action_wrapper .o_my_time_off {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* Leave stats header - Paid Time Off, Test, Pending Requests */
+.embedded_view_wrapper .o_hr_leave_stats_header,
+.embedded_client_action_wrapper .o_hr_leave_stats_header,
+.embedded_view_wrapper .o_leave_panel,
+.embedded_client_action_wrapper .o_leave_panel,
+.embedded_view_wrapper .o_leave_stats_panel,
+.embedded_client_action_wrapper .o_leave_stats_panel,
+.embedded_view_wrapper .o_time_off_stats,
+.embedded_client_action_wrapper .o_time_off_stats,
+.embedded_view_wrapper .o_leave_cards,
+.embedded_client_action_wrapper .o_leave_cards {
+    flex-shrink: 0;
+    padding: 16px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+}
+
+/* Leave type cards */
+.embedded_view_wrapper .o_leave_type_card,
+.embedded_client_action_wrapper .o_leave_type_card,
+.embedded_view_wrapper .o_leave_card,
+.embedded_client_action_wrapper .o_leave_card,
+.embedded_view_wrapper .o_time_off_card,
+.embedded_client_action_wrapper .o_time_off_card {
+    flex: 0 0 auto;
+    min-width: 180px;
+    padding: 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+}
+
+/* Leave calendar section */
+.embedded_view_wrapper .o_leave_calendar_section,
+.embedded_client_action_wrapper .o_leave_calendar_section,
+.embedded_view_wrapper .o_time_off_calendar,
+.embedded_client_action_wrapper .o_time_off_calendar {
+    flex: 1;
+    min-height: 400px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
 /* ============ LIST VIEW ============ */
@@ -458,12 +779,81 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
     overflow: auto;
 }
 
-/* Smart button click handling */
-.embedded_view_wrapper .oe_stat_button,
-.embedded_view_wrapper .o_stat_info,
-.embedded_view_wrapper .o_form_uri {
+/* ============ STAT BUTTONS / SMART BUTTONS ============ */
+
+/* Ensure stat button wrapper is properly visible and interactive */
+.embedded_view_wrapper .oe_button_box {
+    display: flex !important;
+    flex-wrap: wrap;
+    gap: 4px;
+    pointer-events: auto;
+}
+
+/* Stat buttons - main styling for interactivity */
+.embedded_view_wrapper .oe_stat_button {
+    pointer-events: auto !important;
+    cursor: pointer !important;
+    position: relative;
+    z-index: 1;
+}
+
+.embedded_view_wrapper .oe_stat_button:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
+/* Stat button children - ensure clicks pass through to button */
+/* EXCEPT for dropdowns which need to remain interactive */
+.embedded_view_wrapper .oe_stat_button > *:not(.dropdown):not(.dropdown-toggle):not(.dropdown-menu):not(.o_dropdown):not([data-bs-toggle]),
+.embedded_view_wrapper .oe_stat_button .o_stat_info,
+.embedded_view_wrapper .oe_stat_button .o_field_widget:not(.dropdown):not(.o_dropdown),
+.embedded_view_wrapper .oe_stat_button .o_stat_value,
+.embedded_view_wrapper .oe_stat_button .o_stat_text,
+.embedded_view_wrapper .oe_stat_button i:not(.dropdown-toggle),
+.embedded_view_wrapper .oe_stat_button span:not(.dropdown-toggle) {
+    pointer-events: none !important;
+}
+
+/* Ensure dropdown elements within stat buttons area remain fully interactive */
+.embedded_view_wrapper .oe_button_box .dropdown,
+.embedded_view_wrapper .oe_button_box .dropdown-toggle,
+.embedded_view_wrapper .oe_button_box .dropdown-menu,
+.embedded_view_wrapper .oe_button_box .o_dropdown,
+.embedded_view_wrapper .oe_button_box .o_dropdown_toggler,
+.embedded_view_wrapper .oe_button_box [data-bs-toggle="dropdown"],
+.embedded_view_wrapper .oe_button_box [aria-expanded],
+.embedded_view_wrapper .oe_button_box .btn-secondary,
+.embedded_view_wrapper .oe_button_box .o_stat_button_more,
+.embedded_view_wrapper .o_form_sheet .dropdown,
+.embedded_view_wrapper .o_form_sheet .dropdown-toggle,
+.embedded_view_wrapper .o_form_sheet .dropdown-menu,
+.embedded_view_wrapper .o_inner_group .dropdown,
+.embedded_view_wrapper .o_inner_group .dropdown-toggle,
+.embedded_view_wrapper .o_inner_group .dropdown-menu {
+    pointer-events: auto !important;
+    cursor: pointer !important;
+    z-index: 100;
+}
+
+/* Dropdown menu must be above other elements */
+.embedded_view_wrapper .oe_button_box .dropdown-menu,
+.embedded_view_wrapper .o_form_sheet .dropdown-menu {
+    z-index: 10005 !important;
+    position: absolute;
+}
+
+/* But allow the button itself to receive clicks */
+.embedded_view_wrapper .oe_stat_button[type="action"],
+.embedded_view_wrapper .oe_stat_button[type="object"] {
     pointer-events: auto !important;
 }
+
+/* Form URI links (Many2one field links) */
+.embedded_view_wrapper .o_form_uri {
+    pointer-events: auto !important;
+    cursor: pointer !important;
+}
+
+/* ============ FORM BUTTONS ============ */
 
 /* Ensure form buttons are fully interactive */
 .embedded_view_wrapper .o_form_button_edit,
@@ -478,6 +868,18 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
 .embedded_view_wrapper .o_statusbar_buttons {
     display: flex !important;
     gap: 8px;
+}
+
+/* Status bar buttons */
+.embedded_view_wrapper .o_statusbar_buttons button {
+    pointer-events: auto !important;
+}
+
+/* Action buttons in form */
+.embedded_view_wrapper .o_form_view button[name],
+.embedded_view_wrapper .o_form_view .o_form_button {
+    pointer-events: auto !important;
+    cursor: pointer !important;
 }
 
 /* ============ FULLSCREEN LOADER ============ */
