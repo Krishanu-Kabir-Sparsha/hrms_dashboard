@@ -29,6 +29,7 @@
     'data': [
         'security/ir.model.access.csv',
         'views/dashboard_views.xml',
+        'views/res_users_views.xml',
     ],
     'assets': {
         'web.assets_backend': [
@@ -44,4 +45,5 @@
     'application': True,
     'auto_install': False,
     'sequence': -100,
+    'post_init_hook': '_post_init_hook',
 }

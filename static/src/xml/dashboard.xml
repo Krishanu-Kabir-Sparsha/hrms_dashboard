@@ -14,7 +14,7 @@
                 <!-- PERSISTENT LEFT SIDEBAR -->
                 <aside class="zoho_persistent_sidebar">
                     <div class="zoho_sidebar_brand">
-                        <span class="brand_icon">📊</span>
+                        <img class="brand_logo" src="/hrms_dashboard/static/description/perfectHR.jpg" alt="HR Dashboard"/>
                     </div>
                     <nav class="zoho_sidebar_nav">
                         <t t-foreach="sidebarItems" t-as="item" t-key="item.id">
@@ -70,7 +70,86 @@
                                 <span class="clock_time" t-esc="formattedCurrentTime"/>
                                 <span class="clock_date" t-esc="formattedCurrentDate"/>
                             </div>
-                            <button class="header_action_btn" t-on-click="onQuickAdd">+ Quick Add</button>
+                            
+                            <!-- User Menu Icons -->
+                            <div class="header_user_menu">
+                                <!-- Activities -->
+                                <div class="header_icon_btn" t-on-click="openActivities" title="Activities">
+                                    <span class="icon_emoji">🕐</span>
+                                    <span t-if="state.activityCount > 0" class="icon_badge" t-esc="state.activityCount"/>
+                                </div>
+                                
+                                <!-- Messages -->
+                                <div class="header_icon_btn" t-on-click="openMessages" title="Messages">
+                                    <span class="icon_emoji">💬</span>
+                                    <span t-if="state.messageCount > 0" class="icon_badge" t-esc="state.messageCount"/>
+                                </div>
+                                
+                                <!-- Notifications Bell -->
+                                <div class="header_icon_btn" t-on-click="() => this.onSidebarClick({id: 'home', action: 'home'})" title="Notifications">
+                                    <span class="icon_emoji">🔔</span>
+                                </div>
+                                
+                                <!-- User Profile Dropdown -->
+                                <div class="header_user_dropdown" t-on-click="toggleUserMenu">
+                                    <div class="user_avatar_small">
+                                        <t t-if="state.employee?.image_128">
+                                            <img t-att-src="'data:image/png;base64,' + state.employee.image_128" alt=""/>
+                                        </t>
+                                        <t t-else="">
+                                            <span class="avatar_placeholder">👤</span>
+                                        </t>
+                                    </div>
+                                    <div class="user_info_mini">
+                                        <span class="user_name_mini" t-esc="userName"/>
+                                        <span class="company_name_mini" t-esc="userCompanyName"/>
+                                    </div>
+                                    <span class="dropdown_arrow">▼</span>
+                                    
+                                    <!-- Dropdown Menu -->
+                                    <div t-if="state.userMenuOpen" class="user_dropdown_menu">
+                                        <div class="dropdown_header">
+                                            <div class="dropdown_avatar">
+                                                <t t-if="state.employee?.image_128">
+                                                    <img t-att-src="'data:image/png;base64,' + state.employee.image_128" alt=""/>
+                                                </t>
+                                                <t t-else="">
+                                                    <span class="avatar_placeholder_lg">👤</span>
+                                                </t>
+                                            </div>
+                                            <div class="dropdown_user_info">
+                                                <span class="dropdown_user_name" t-esc="userName"/>
+                                                <span class="dropdown_user_email" t-esc="state.employee?.work_email || ''"/>
+                                            </div>
+                                        </div>
+                                        <div class="dropdown_divider"/>
+                                        <div class="dropdown_item" t-on-click.stop="openUserPreferences">
+                                            <span class="dropdown_icon">⚙️</span>
+                                            <span>Preferences</span>
+                                        </div>
+                                        <div class="dropdown_item" t-on-click.stop="() => this.onSidebarClick({id: 'profile', action: 'profile'})">
+                                            <span class="dropdown_icon">👤</span>
+                                            <span>My Profile</span>
+                                        </div>
+                                        <t t-if="state.companies.length > 1">
+                                            <div class="dropdown_divider"/>
+                                            <div class="dropdown_section_title">Switch Company</div>
+                                            <t t-foreach="state.companies" t-as="company" t-key="company.id">
+                                                <div class="dropdown_item company_item" 
+                                                     t-att-class="{'active': state.currentCompany?.id === company.id}">
+                                                    <span class="dropdown_icon">🏢</span>
+                                                    <span t-esc="company.name"/>
+                                                </div>
+                                            </t>
+                                        </t>
+                                        <div class="dropdown_divider"/>
+                                        <div class="dropdown_item logout_item" t-on-click.stop="onLogout">
+                                            <span class="dropdown_icon">🚪</span>
+                                            <span>Log Out</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </header>
 

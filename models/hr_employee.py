@@ -67,11 +67,13 @@ class HrEmployee(models.Model):
         if not employee:
             return [{
                 'id': False,
+                'user_id': self.env.user.id,
                 'name': 'User',
                 'image_1920': False,
                 'image_128': False,
                 'job_id': False,
                 'department_id': False,
+                'company_id': False,
                 'work_email': '',
                 'mobile_phone': '',
                 'work_phone': '',
@@ -118,11 +120,13 @@ class HrEmployee(models.Model):
 
             return [{
                 'id': employee.id,
+                'user_id': self.env.user.id,
                 'name': employee.name or 'User',
                 'image_1920': employee.image_1920 or False,
                 'image_128': employee.image_128 or False,
                 'job_id': [employee.job_id.id, employee.job_id.name] if employee.job_id else False,
                 'department_id': [employee.department_id.id, employee.department_id.name] if employee.department_id else False,
+                'company_id': [employee.company_id.id, employee.company_id.name] if employee.company_id else False,
                 'work_email': employee.work_email or '',
                 'mobile_phone': employee.mobile_phone or '',
                 'work_phone': employee.work_phone or '',

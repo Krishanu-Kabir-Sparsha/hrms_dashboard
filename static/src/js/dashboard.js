@@ -93,6 +93,13 @@ export class ZohoDashboard extends Component {
             skills: [],
             currentAnnouncementIndex: 0,
             currentTime: new Date(),
+            // User menu state
+            userMenuOpen: false,
+            activityCount: 0,
+            messageCount: 0,
+            companies: [],
+            currentCompany: null,
+            currentUserId: false,
         });
 
         // Navigation items - some use action IDs for proper dashboard loading
@@ -104,6 +111,9 @@ export class ZohoDashboard extends Component {
             { id: "timesheet", icon: "⏱️", label: "Timesheets", model: "account.analytic.line", title: "My Timesheets" },
             { id: "payroll", icon: "💰", label: "Payroll", model: "hr.payslip", title: "My Payslips" },
             { id: "expense", icon: "💳", label: "Expenses", model: "hr.expense", title: "My Expenses" },
+            // Task Management items with proper action references
+            // { id: "my_tasks", icon: "📝", label: "My Tasks", model: "task.management", title: "My Tasks", actionKey: "my_tasks", actionXmlId: "task_management.action_my_tasks" },
+            // { id: "team_tasks", icon: "👥", label: "Team Tasks", model: "task.management", title: "Team Tasks", actionKey: "team_tasks", actionXmlId: "task_management.action_team_tasks" },
             { id: "operations", icon: "⚙️", label: "Operations", action: "operations" },
         ];
 
@@ -141,6 +151,7 @@ export class ZohoDashboard extends Component {
             await this.loadChartLibrary();
             await this.loadInitialData();
             await this.loadPhase4Data();
+            await this.loadUserMenuData();
         });
 
         onMounted(() => {
@@ -149,6 +160,7 @@ export class ZohoDashboard extends Component {
             this.startAnnouncementSlider();
             this.setupPersistentFrame();
             this.setupStatButtonInterceptor();
+            this.setupClickOutsideHandler();
             if (this.state.chartLoaded) {
                 this.renderCharts();
             }
@@ -209,6 +221,14 @@ export class ZohoDashboard extends Component {
                         console.log("📍 Loading action by ID in embedded mode:", numericId);
                         // Prevent full page navigation - load in embedded mode
                         return await self.loadActionById(numericId);
+                    }
+                    // If it's an XML ID string, try to resolve it
+                    if (typeof actionRequest === "string" && actionRequest.includes('.')) {
+                        const resolvedId = await self.resolveXmlIdToActionId(actionRequest);
+                        if (resolvedId) {
+                            console.log("📍 Resolved XML ID to action:", actionRequest, "->", resolvedId);
+                            return await self.loadActionById(resolvedId);
+                        }
                     }
                 } catch (e) {
                     console.warn("Action load failed, using fallback:", e);
@@ -620,25 +640,7 @@ export class ZohoDashboard extends Component {
                     event.stopPropagation();
                     event.stopImmediatePropagation();
                     
-                    try {
-                        const resModel = self.embeddedState.currentResModel;
-                        const resId = self.embeddedState.currentResId;
-                        
-                        if (resModel && resId) {
-                            const result = await self.orm.call(
-                                resModel,
-                                buttonName,
-                                [[resId]],
-                                { context: self.embeddedState.currentContext || {} }
-                            );
-                            
-                            if (result && typeof result === 'object' && result.type) {
-                                await self.actionService.doAction(result);
-                            }
-                        }
-                    } catch (e) {
-                        console.error("Error executing method:", e);
-                    }
+                    await self.executeObjectMethodAndHandleResult(buttonName);
                     return;
                 }
             }
@@ -759,53 +761,7 @@ export class ZohoDashboard extends Component {
                     event.stopImmediatePropagation();
                     
                     console.log("🔧 Executing object method:", buttonName);
-                    
-                    // Execute the method and handle any resulting action
-                    try {
-                        const resModel = self.embeddedState.currentResModel;
-                        const resId = self.embeddedState.currentResId;
-                        
-                        if (resModel && resId) {
-                            const result = await self.orm.call(
-                                resModel,
-                                buttonName,
-                                [[resId]],
-                                { context: self.embeddedState.currentContext || {} }
-                            );
-                            
-                            console.log("📊 Method returned:", result);
-                            
-                            // If the method returns an action, handle it explicitly in embedded mode
-                            if (result && typeof result === 'object' && result.type) {
-                                console.log("📊 Method returned action:", result.type, result);
-                                
-                                // Handle window actions directly
-                                if (result.type === 'ir.actions.act_window') {
-                                    await self.handleWindowActionInEmbedded(result);
-                                    return;
-                                }
-                                
-                                // Handle client actions
-                                if (result.type === 'ir.actions.client') {
-                                    if (result.id) {
-                                        await self.loadClientAction(result.id);
-                                    } else if (result.tag) {
-                                        await self.loadClientActionByTag(result.tag, result);
-                                    }
-                                    return;
-                                }
-                                
-                                // For other action types, use the patched doAction
-                                await self.actionService.doAction(result);
-                            }
-                        }
-                    } catch (e) {
-                        console.error("Error executing method:", e);
-                        self.notification.add(
-                            _t("Error: ") + (e.message || "Failed to execute action"),
-                            { type: "danger" }
-                        );
-                    }
+                    await self.executeObjectMethodAndHandleResult(buttonName);
                     return;
                 }
                 
@@ -855,28 +811,8 @@ export class ZohoDashboard extends Component {
                     
                     // Try as an object method (Python method call)
                     if (!actionId) {
-                        try {
-                            const resModel = self.embeddedState.currentResModel;
-                            const resId = self.embeddedState.currentResId;
-                            
-                            if (resModel && resId) {
-                                console.log("🔧 Trying as object method:", buttonName);
-                                const result = await self.orm.call(
-                                    resModel,
-                                    buttonName,
-                                    [[resId]],
-                                    { context: self.embeddedState.currentContext || {} }
-                                );
-                                
-                                if (result && typeof result === 'object' && result.type) {
-                                    console.log("📊 Method returned action:", result.type);
-                                    await self.actionService.doAction(result);
-                                    return;
-                                }
-                            }
-                        } catch (e) {
-                            console.log("Not a callable method:", buttonName);
-                        }
+                        await self.executeObjectMethodAndHandleResult(buttonName);
+                        return;
                     }
                     
                     if (actionId) {
@@ -976,6 +912,235 @@ export class ZohoDashboard extends Component {
             }
         };
         document.addEventListener('mousedown', this._statButtonMousedownHandler, true);
+    }
+
+    /**
+     * Execute an object method on the current record and handle any returned action
+     */
+    async executeObjectMethodAndHandleResult(methodName) {
+        try {
+            const resModel = this.embeddedState.currentResModel;
+            const resId = this.embeddedState.currentResId;
+            
+            if (resModel && resId) {
+                console.log("🔧 Executing object method:", methodName, "on", resModel, resId);
+                const result = await this.orm.call(
+                    resModel,
+                    methodName,
+                    [[resId]],
+                    { context: this.embeddedState.currentContext || {} }
+                );
+                
+                console.log("📊 Method returned:", result);
+                
+                // If the method returns an action, handle it explicitly in embedded mode
+                if (result && typeof result === 'object' && result.type) {
+                    console.log("📊 Method returned action:", result.type, result);
+                    
+                    // Handle window actions directly
+                    if (result.type === 'ir.actions.act_window') {
+                        await this.handleWindowActionInEmbedded(result);
+                        return;
+                    }
+                    
+                    // Handle client actions
+                    if (result.type === 'ir.actions.client') {
+                        if (result.id) {
+                            await this.loadClientAction(result.id);
+                        } else if (result.tag) {
+                            await this.loadClientActionByTag(result.tag, result);
+                        }
+                        return;
+                    }
+                    
+                    // For other action types, use the patched doAction
+                    await this.actionService.doAction(result);
+                }
+            } else {
+                console.warn("No resModel or resId available for object method execution");
+            }
+        } catch (e) {
+            console.error("Error executing method:", e);
+            this.notification.add(
+                _t("Error: ") + (e.message || "Failed to execute action"),
+                { type: "danger" }
+            );
+        }
+    }
+
+        /**
+     * Dynamically find an action for a given model
+     * Used when navigating to external modules like task_management
+     */
+    async findActionForModel(resModel, preferredActionName = null) {
+        try {
+            let domain = [["res_model", "=", resModel]];
+            
+            // If we have a preferred action name, search for it first
+            if (preferredActionName) {
+                const preferredAction = await this.orm.searchRead(
+                    "ir.actions.act_window",
+                    [
+                        ["res_model", "=", resModel],
+                        "|",
+                        ["name", "ilike", preferredActionName],
+                        ["xml_id", "ilike", preferredActionName]
+                    ],
+                    ["id", "name", "xml_id", "view_mode", "domain", "context"],
+                    { limit: 1 }
+                );
+                
+                if (preferredAction && preferredAction.length) {
+                    console.log("✅ Found preferred action:", preferredAction[0]);
+                    return preferredAction[0];
+                }
+            }
+            
+            // Fallback: find the first action for this model
+            const actions = await this.orm.searchRead(
+                "ir.actions.act_window",
+                domain,
+                ["id", "name", "xml_id", "view_mode", "domain", "context"],
+                { limit: 5, order: "id asc" }
+            );
+            
+            if (actions && actions.length) {
+                // Prefer actions that are linked to menus
+                for (const action of actions) {
+                    const menu = await this.orm.searchRead(
+                        "ir.ui.menu",
+                        [["action", "=", `ir.actions.act_window,${action.id}`]],
+                        ["id"],
+                        { limit: 1 }
+                    );
+                    if (menu && menu.length) {
+                        console.log("✅ Found action with menu:", action);
+                        return action;
+                    }
+                }
+                // If no action has a menu, return the first one
+                console.log("✅ Found action (no menu):", actions[0]);
+                return actions[0];
+            }
+            
+            return null;
+        } catch (e) {
+            console.error("Error finding action for model:", e);
+            return null;
+        }
+    }
+
+    /**
+     * Try to resolve known module action XML IDs
+     * This maps common module patterns to their XML IDs
+     */
+    getKnownModuleActions() {
+        return {
+            // HR Holidays / Time Off - Dashboard with year calendar and stats cards
+            'hr.leave': {
+                'default': 'hr_holidays.hr_leave_action_new_request',   // Dashboard with time_off_calendar_dashboard js_class
+                'my_request': 'hr_holidays.hr_leave_action_my',         // My Time Off list view
+                'dashboard': 'hr_holidays.hr_leave_action_new_request',
+                'overview': 'hr_holidays.action_hr_holidays_dashboard', // Overview (hr.leave.report.calendar)
+                'all': 'hr_holidays.hr_leave_action_action_approve_department',
+            },
+            'hr.leave.report.calendar': {
+                'default': 'hr_holidays.action_hr_holidays_dashboard',
+            },
+            'hr.leave.allocation': {
+                'default': 'hr_holidays.hr_leave_allocation_action_my',
+                'approve': 'hr_holidays.hr_leave_allocation_action_approve_department',
+            },
+            // Task Management
+            'task.management': {
+                'my_tasks': 'task_management.action_my_tasks',
+                'team_tasks': 'task_management.action_team_tasks',
+                'all_tasks': 'task_management.action_all_tasks',
+            },
+            'task.team': {
+                'default': 'task_management.action_task_teams',
+            },
+            // Appraisal
+            'hr.appraisal': {
+                'default': 'oh_appraisal.open_view_hr_appraisal_tree',
+            },
+            'oh.appraisal.master': {
+                'default': 'oh_appraisal_ext.oh_app_ext_action_master_form',
+            },
+            // Announcements
+            'hr.announcement': {
+                'default': 'hr_reward_warning.action_hr_announcement',
+            },
+        };
+    }
+
+    /**
+     * Resolve an action by searching various criteria
+     * Handles models like task.management, hr.announcement, etc.
+     */
+    async resolveActionByNameOrModel(actionName, resModel = null) {
+        console.log("🔍 Resolving action by name/model:", actionName, resModel);
+        
+        try {
+            // Build search domain
+            let domain = [];
+            
+            if (actionName) {
+                domain.push('|', '|', '|');
+                domain.push(['name', 'ilike', actionName]);
+                domain.push(['xml_id', 'ilike', actionName]);
+                // Also search by the action name with underscores replaced by spaces
+                domain.push(['name', 'ilike', actionName.replace(/_/g, ' ')]);
+                // And with module prefix
+                domain.push(['xml_id', 'ilike', `%.${actionName}`]);
+            }
+            
+            if (resModel) {
+                domain = domain.length > 0 
+                    ? ['&', ['res_model', '=', resModel], ...domain]
+                    : [['res_model', '=', resModel]];
+            }
+            
+            const actions = await this.orm.searchRead(
+                "ir.actions.act_window",
+                domain,
+                ["id", "name", "res_model", "xml_id"],
+                { limit: 5, order: 'id asc' }
+            );
+            
+            if (actions && actions.length > 0) {
+                // Prefer exact name match
+                const exactMatch = actions.find(a => 
+                    a.name && a.name.toLowerCase() === actionName.toLowerCase()
+                );
+                if (exactMatch) {
+                    console.log("✅ Found exact match:", exactMatch);
+                    return exactMatch.id;
+                }
+                
+                // Fall back to first result
+                console.log("✅ Found action:", actions[0]);
+                return actions[0].id;
+            }
+            
+            // Also try client actions
+            const clientActions = await this.orm.searchRead(
+                "ir.actions.client",
+                [['tag', 'ilike', actionName]],
+                ["id", "name", "tag"],
+                { limit: 1 }
+            );
+            
+            if (clientActions && clientActions.length > 0) {
+                console.log("✅ Found client action:", clientActions[0]);
+                return { type: 'client', id: clientActions[0].id, tag: clientActions[0].tag };
+            }
+            
+        } catch (e) {
+            console.warn("Could not resolve action by name/model:", e);
+        }
+        
+        return null;
     }
 
     setupRouterInterception() {
@@ -1233,6 +1398,31 @@ export class ZohoDashboard extends Component {
                 'calendar.assets_calendar',
                 'web_calendar.calendar_assets',
             ],
+            // Task Management module
+            'task.management': [
+                'task_management.assets_backend',
+            ],
+            'task.team': [
+                'task_management.assets_backend',
+            ],
+            'task.subtask': [
+                'task_management.assets_backend',
+            ],
+            // Appraisal module
+            'hr.appraisal': [
+                'oh_appraisal.assets_backend',
+                'oh_appraisal_ext.assets_backend',
+            ],
+            'oh.appraisal.master': [
+                'oh_appraisal_ext.assets_backend',
+            ],
+            'oh.appraisal.okr.template': [
+                'oh_appraisal_ext.assets_backend',
+            ],
+            // Announcements/Reward Warning
+            'hr.announcement': [
+                'hr_reward_warning.assets_backend',
+            ],
         };
 
         if (modelBundleMap[resModel]) {
@@ -1251,6 +1441,10 @@ export class ZohoDashboard extends Component {
                 bundlesToLoad.add('calendar.assets_calendar');
             } else if (moduleName === 'crm') {
                 bundlesToLoad.add('crm.assets_crm');
+            } else if (moduleName === 'task') {
+                bundlesToLoad.add('task_management.assets_backend');
+            } else if (moduleName === 'oh') {
+                bundlesToLoad.add('oh_appraisal_ext.assets_backend');
             }
         }
 
@@ -1290,9 +1484,33 @@ export class ZohoDashboard extends Component {
                 'spreadsheet.assets_spreadsheet_dashboard',
             ],
             
-            // Time Off
-            'hr_holidays.hr_leave_action_my_request': ['hr_holidays.assets_hr_holidays'],
-            'hr_holidays.action_hr_leave_dashboard': ['hr_holidays.assets_hr_holidays'],
+            // Time Off / HR Holidays
+            'hr_holidays.hr_leave_action_new_request': [
+                'web.assets_backend_lazy',
+                'web_calendar.calendar_assets',
+                'calendar.assets_calendar',
+                'calendar.assets_backend',
+            ],
+            'hr_holidays.hr_leave_action_my_request': [
+                'web.assets_backend_lazy',
+                'web_calendar.calendar_assets',
+                'calendar.assets_calendar',
+            ],
+            'hr_holidays.action_hr_leave_dashboard': [
+                'web.assets_backend_lazy',
+                'web_calendar.calendar_assets',
+                'calendar.assets_calendar',
+            ],
+            'hr_holidays.action_hr_holidays_dashboard': [
+                'web.assets_backend_lazy',
+                'web_calendar.calendar_assets',
+                'calendar.assets_calendar',
+            ],
+            'hr_holidays.hr_leave_action_action_approve_department': [
+                'web.assets_backend_lazy',
+                'web_calendar.calendar_assets',
+                'calendar.assets_calendar',
+            ],
             
             // Project
             'project.action_view_all_task': ['project.assets_project'],
@@ -1302,6 +1520,16 @@ export class ZohoDashboard extends Component {
             
             // Knowledge
             'knowledge.action_home': ['knowledge.assets_knowledge'],
+
+            // OH Appraisal Extension - Master Template Dashboard
+            'oh_appraisal_dashboard': [
+                'oh_appraisal_ext.assets_backend',
+            ],
+
+            // Task Management
+            'task_management_dashboard': [
+                'task_management.assets_backend',
+            ],
         };
 
         // Add known bundles
@@ -1326,6 +1554,21 @@ export class ZohoDashboard extends Component {
                     bundlesToLoad.push(b);
                 }
             });
+        }
+        
+        // Special handling for underscored module names (e.g., oh_appraisal_ext)
+        if (tag.includes('_')) {
+            const underscoreModuleName = tag.split('_').slice(0, -1).join('_');
+            if (underscoreModuleName && underscoreModuleName !== tag) {
+                const additionalBundles = [
+                    `${underscoreModuleName}.assets_backend`,
+                ];
+                additionalBundles.forEach(b => {
+                    if (!bundlesToLoad.includes(b)) {
+                        bundlesToLoad.push(b);
+                    }
+                });
+            }
         }
 
         // Load bundles sequentially for dependencies
@@ -1496,8 +1739,26 @@ export class ZohoDashboard extends Component {
         }
     }
 
+    setupClickOutsideHandler() {
+        this._clickOutsideHandler = (event) => {
+            // Close user menu if clicking outside
+            if (this.state.userMenuOpen) {
+                const dropdown = event.target.closest('.header_user_dropdown');
+                if (!dropdown) {
+                    this.state.userMenuOpen = false;
+                }
+            }
+        };
+        document.addEventListener('click', this._clickOutsideHandler);
+    }
+
     cleanup() {
         try {
+            // Remove click outside handler
+            if (this._clickOutsideHandler) {
+                document.removeEventListener('click', this._clickOutsideHandler);
+                this._clickOutsideHandler = null;
+            }
             // Remove stat button interceptors
             if (this._statButtonClickHandler) {
                 document.removeEventListener('click', this._statButtonClickHandler, true);
@@ -1656,18 +1917,68 @@ export class ZohoDashboard extends Component {
     }
 
     async loadClientActionByTag(tag, originalAction = null) {
-        const [clientAction] = await this.orm.searchRead(
-            "ir.actions.client",
-            [["tag", "=", tag]],
-            ["id"],
-            { limit: 1 }
-        );
+        console.log("🏷️ Loading client action by tag:", tag);
+        
+        try {
+            // First try to find the client action by exact tag match
+            let clientAction = await this.orm.searchRead(
+                "ir.actions.client",
+                [["tag", "=", tag]],
+                ["id", "name", "tag", "params", "context"],
+                { limit: 1 }
+            );
 
-        if (!clientAction) {
+            if (!clientAction || clientAction.length === 0) {
+                // Try searching with ilike for partial matches
+                clientAction = await this.orm.searchRead(
+                    "ir.actions.client",
+                    [["tag", "ilike", tag]],
+                    ["id", "name", "tag", "params", "context"],
+                    { limit: 1 }
+                );
+            }
+
+            if (clientAction && clientAction.length > 0) {
+                console.log("✅ Found client action:", clientAction[0]);
+                return this.loadClientAction(clientAction[0].id);
+            }
+
+            // If still not found but we have original action data, try to mount directly
+            if (originalAction) {
+                console.log("📦 Mounting client action directly from original action data");
+                
+                // Set loading state
+                this.embeddedState.loading = true;
+                this.embeddedState.errorMessage = null;
+                this.embeddedState.isClientAction = true;
+                this.embeddedState.clientActionMounted = false;
+                this.embeddedState.isEmbeddedMode = true;
+                this.state.currentView = "embedded";
+
+                this.embeddedState.viewTitle = originalAction.name || tag;
+                
+                const actionData = {
+                    id: originalAction.id || null,
+                    tag: tag,
+                    name: originalAction.name || tag,
+                    params: originalAction.params || {},
+                    context: originalAction.context || {},
+                };
+
+                await this.doMountClientAction(actionData);
+                return;
+            }
+
             throw new Error(`Client action with tag "${tag}" not found`);
+        } catch (error) {
+            console.error("❌ Failed to load client action by tag:", error);
+            this.embeddedState.errorMessage = error.message || "Failed to load application";
+            this.embeddedState.loading = false;
+            this.notification.add(
+                _t("Failed to load application: ") + (error.message || "Unknown error"),
+                { type: "danger" }
+            );
         }
-
-        return this.loadClientAction(clientAction.id || originalAction?.id);
     }
 
     cleanupClientAction() {
@@ -2661,6 +2972,34 @@ export class ZohoDashboard extends Component {
                 // After loading action, check if resModel matches a sidebar item
                 this.updateSidebarFromResModel();
             } else {
+                // Check if this is a known app that uses client actions
+                const appName = (app.name || "").toLowerCase();
+                
+                // Handle appraisal module specifically
+                if (appName.includes('appraisal') || appName.includes('assessment')) {
+                    // Try to find the appraisal dashboard client action
+                    const appraisalAction = await this.orm.searchRead(
+                        "ir.actions.client",
+                        [['tag', '=', 'oh_appraisal_dashboard']],
+                        ["id"],
+                        { limit: 1 }
+                    );
+                    if (appraisalAction && appraisalAction.length > 0) {
+                        await this.loadClientAction(appraisalAction[0].id);
+                        return;
+                    }
+                }
+                
+                // Handle task management module
+                if (appName.includes('task') && !appName.includes('project')) {
+                    // Try to find task management action
+                    const taskAction = await this.resolveXmlIdToActionId('task_management.action_all_tasks');
+                    if (taskAction) {
+                        await this.loadActionById(taskAction);
+                        return;
+                    }
+                }
+                
                 this.embeddedState.errorMessage = _t("No action found for ") + app.name;
                 // Default to operations if no match
                 this.embeddedState.activeSidebarItem = "operations";
@@ -2694,6 +3033,14 @@ export class ZohoDashboard extends Component {
             "account.analytic.line": "timesheet",
             "hr.payslip": "payroll",
             "hr.expense": "expense",
+            // ADD: Task Management models
+            "task.management": "tasks",
+            "task.team": "tasks",
+            // ADD: Appraisal models
+            "oh.appraisal.okr.template": "appraisal",
+            "oh.appraisal.master": "appraisal",
+            // ADD: Announcement models
+            "hr.announcement": "announcements",
         };
         
         const sidebarId = modelToSidebarMap[resModel];
@@ -3074,16 +3421,51 @@ export class ZohoDashboard extends Component {
             }
             
             // Search for the external ID
-            const domain = module 
+            let domain = module 
                 ? [["module", "=", module], ["name", "=", name]]
                 : [["name", "=", name]];
             
-            const result = await this.orm.searchRead(
+            let result = await this.orm.searchRead(
                 "ir.model.data",
                 domain,
                 ["res_id", "model"],
                 { limit: 1 }
             );
+            
+            // If not found with exact match, try with ilike
+            if (!result || result.length === 0) {
+                domain = module 
+                    ? [["module", "=", module], ["name", "ilike", name]]
+                    : [["name", "ilike", name]];
+                    
+                result = await this.orm.searchRead(
+                    "ir.model.data",
+                    domain,
+                    ["res_id", "model"],
+                    { limit: 1 }
+                );
+            }
+            
+            // If still not found and no module was specified, try common module prefixes
+            if ((!result || result.length === 0) && !module) {
+                const commonModules = [
+                    'task_management', 'oh_appraisal_ext', 'hr_reward_warning',
+                    'hr', 'project', 'hr_holidays', 'hr_attendance'
+                ];
+                
+                for (const mod of commonModules) {
+                    const modResult = await this.orm.searchRead(
+                        "ir.model.data",
+                        [["module", "=", mod], ["name", "=", name]],
+                        ["res_id", "model"],
+                        { limit: 1 }
+                    );
+                    if (modResult && modResult.length > 0) {
+                        result = modResult;
+                        break;
+                    }
+                }
+            }
             
             if (result && result.length > 0) {
                 console.log("✅ Resolved XML ID:", xmlId, "->", result[0].res_id);
@@ -3501,6 +3883,133 @@ export class ZohoDashboard extends Component {
         }
     }
 
+    async loadUserMenuData() {
+        try {
+            // Get current user ID from employee data (loaded in loadInitialData)
+            this.state.currentUserId = this.state.employee?.user_id || false;
+
+            if (this.state.currentUserId) {
+                // Load activity count
+                try {
+                    const activities = await this.orm.searchCount("mail.activity", [
+                        ["user_id", "=", this.state.currentUserId],
+                    ]);
+                    this.state.activityCount = activities || 0;
+                } catch (e) {
+                    this.state.activityCount = 0;
+                }
+
+                // Load unread message count
+                try {
+                    const messages = await this.orm.searchCount("mail.message", [
+                        ["needaction", "=", true],
+                    ]);
+                    this.state.messageCount = messages || 0;
+                } catch (e) {
+                    this.state.messageCount = 0;
+                }
+            }
+
+            // Load company info from employee data
+            if (this.state.employee?.company_id) {
+                this.state.currentCompany = {
+                    id: this.state.employee.company_id[0],
+                    name: this.state.employee.company_id[1] || "Company"
+                };
+            }
+        } catch (error) {
+            console.error("Failed to load user menu data:", error);
+            // Set defaults if loading fails
+            this.state.activityCount = 0;
+            this.state.messageCount = 0;
+        }
+    }
+
+    // User Menu Methods
+    toggleUserMenu() {
+        this.state.userMenuOpen = !this.state.userMenuOpen;
+    }
+
+    closeUserMenu() {
+        this.state.userMenuOpen = false;
+    }
+
+    async openActivities() {
+        this.state.userMenuOpen = false;
+        // Open activities in embedded view
+        if (!this.state.currentUserId) return;
+        this.embeddedState.activeSidebarItem = "operations";
+        await this.loadEmbeddedView("mail.activity", "My Activities", [
+            ["user_id", "=", this.state.currentUserId],
+        ], "list");
+    }
+
+    async openMessages() {
+        this.state.userMenuOpen = false;
+        // Open discuss/inbox - try to load it as embedded app
+        try {
+            // Find the Discuss app in our apps list
+            const discussApp = this.state.apps.find(app => 
+                app.name.toLowerCase().includes("discuss") || 
+                app.name.toLowerCase().includes("inbox")
+            );
+            if (discussApp) {
+                await this.loadEmbeddedApp(discussApp);
+            } else {
+                // Fallback: load mail.message model
+                this.embeddedState.activeSidebarItem = "operations";
+                await this.loadEmbeddedView("mail.message", "Messages", [
+                    ["needaction", "=", true],
+                ], "list");
+            }
+        } catch (error) {
+            this.notification.add(_t("Could not open messages"), { type: "warning" });
+        }
+    }
+
+    async openUserPreferences() {
+        this.state.userMenuOpen = false;
+        // Open user preferences form
+        if (!this.state.currentUserId) return;
+        try {
+            this.embeddedState.activeSidebarItem = "profile";
+            // Load form view for current user
+            this.embeddedState.loading = true;
+            this.embeddedState.errorMessage = null;
+            this.embeddedState.isEmbeddedMode = true;
+            this.embeddedState.isClientAction = false;
+            this.embeddedState.viewTitle = "My Preferences";
+            this.embeddedState.currentResModel = "res.users";
+            this.embeddedState.currentResId = this.state.currentUserId;
+            this.embeddedState.currentDomain = [];
+            this.embeddedState.currentViewType = "form";
+            this.embeddedState.currentMenus = [];
+            this.embeddedState.breadcrumbs = [{ name: "My Preferences", type: 'view' }];
+            this.state.currentView = "embedded";
+
+            await this.loadViewBundles("res.users", "form");
+            this.embeddedState.availableViewTypes = ["form"];
+            this.buildDynamicViewProps("res.users", "form", [], {}, this.state.currentUserId);
+            this.embeddedState.loading = false;
+        } catch (error) {
+            this.embeddedState.loading = false;
+            this.embeddedState.errorMessage = "Could not open preferences";
+            this.notification.add(_t("Could not open preferences"), { type: "warning" });
+        }
+    }
+
+    async onLogout() {
+        window.location.href = "/web/session/logout";
+    }
+
+    get userName() {
+        return this.state.employee?.name || "User";
+    }
+
+    get userCompanyName() {
+        return this.state.currentCompany?.name || "Company";
+    }
+
     renderCharts() {
         if (!this.state.chartLoaded || typeof Chart === "undefined") return;
         setTimeout(() => {
@@ -3623,7 +4132,7 @@ export class ZohoDashboard extends Component {
             this.state.currentView = "profile";
             this.embeddedState.activeSidebarItem = "profile";
         } else if (item.actionXmlId) {
-            // Load via action XML ID (e.g., Leave dashboard)
+            // Load via action XML ID (e.g., Leave dashboard, Task Management)
             this.embeddedState.activeSidebarItem = item.id;
             this.loadSidebarActionByXmlId(item);
         } else if (item.model) {
@@ -3642,6 +4151,8 @@ export class ZohoDashboard extends Component {
         this.embeddedState.errorMessage = null;
         this.embeddedState.isEmbeddedMode = true;
         this.embeddedState.isClientAction = false;
+        this.embeddedState.clientActionComponent = null;
+        this.embeddedState.clientActionProps = null;
         this.embeddedState.viewTitle = item.title || item.label;
         this.state.currentView = "embedded";
         
@@ -3653,13 +4164,19 @@ export class ZohoDashboard extends Component {
             const actionId = await this.resolveXmlIdToActionId(item.actionXmlId);
             
             if (actionId) {
-                console.log("📅 Loading sidebar action:", item.actionXmlId, "->", actionId);
+                console.log("📍 Loading sidebar action:", item.actionXmlId, "->", actionId);
                 await this.loadActionById(actionId);
             } else {
                 // Fallback to model-based view if action not found
                 console.warn("Could not resolve action XML ID:", item.actionXmlId);
                 if (item.model) {
-                    this.loadEmbeddedView(item.model, item.title || item.label);
+                    // Try to find any action for this model
+                    const fallbackAction = await this.findActionForModel(item.model, item.title);
+                    if (fallbackAction) {
+                        await this.loadActionById(fallbackAction.id);
+                    } else {
+                        this.loadEmbeddedView(item.model, item.title || item.label);
+                    }
                 } else {
                     this.embeddedState.errorMessage = "Action not found: " + item.actionXmlId;
                     this.embeddedState.loading = false;
@@ -3672,7 +4189,7 @@ export class ZohoDashboard extends Component {
         }
     }
 
-    openSidebarModel(item) {
+    async openSidebarModel(item) {
         // Clear previous embedded state
         this.embeddedState.currentMenus = [];
         this.embeddedState.currentApp = null;
@@ -3690,6 +4207,25 @@ export class ZohoDashboard extends Component {
                 domain = [["project_id", "!=", false]];
             }
         }
+
+        // Check if this is an external module that has a known action
+        const knownActions = this.getKnownModuleActions();
+        if (knownActions[item.model]) {
+            const actionKey = item.actionKey || 'default';
+            const xmlId = knownActions[item.model][actionKey] || knownActions[item.model]['default'];
+            
+            if (xmlId) {
+                const actionId = await this.resolveXmlIdToActionId(xmlId);
+                if (actionId) {
+                    console.log("📍 Loading known action for model:", item.model, "->", actionId);
+                    this.embeddedState.activeSidebarItem = item.id;
+                    await this.loadActionById(actionId);
+                    return;
+                }
+            }
+        }
+
+        // Fallback to standard embedded view loading
         this.loadEmbeddedView(item.model, item.title || item.label, domain);
     }
     
@@ -3716,14 +4252,7 @@ export class ZohoDashboard extends Component {
     async onAppClick(app) {
         if (!app) return;
 
-        const appName = (app.name || "").toLowerCase();
-
-        const fullPageApps = ["settings", "apps", "general settings", "users"];
-        if (fullPageApps.some(name => appName.includes(name))) {
-            window.location.href = `/web#menu_id=${app.id}`;
-            return;
-        }
-
+        // Load ALL apps in embedded view (including Settings and Apps)
         await this.loadEmbeddedApp(app);
     }
 

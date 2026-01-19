@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="0">
+    <!-- 
+        Set HRMS Dashboard as default home action for all internal users.
+        noupdate="0" ensures this runs on every install/upgrade.
+        The function call sets the dashboard for all existing users.
+    -->
+    
+    <!-- Call the method to set dashboard for all internal users -->
+    <function model="res.users" name="set_dashboard_as_home_action"/>
+</odoo>
