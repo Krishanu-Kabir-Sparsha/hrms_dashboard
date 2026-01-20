@@ -1397,15 +1397,16 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
 
 .clock_time {
     display: block;
-    font-size: 17px;
-    font-weight: 600;
+    font-size: 18px;
+    font-weight: 700;
     color: var(--text-dark);
 }
 
 .clock_date {
     display: block;
-    font-size: 11px;
-    color: var(--text-light);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-medium);
 }
 
 .header_action_btn {
@@ -1432,6 +1433,8 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
     display: flex;
     align-items: center;
     gap: 8px;
+    position: relative;
+    z-index: 100;
 }
 
 .header_icon_btn {
@@ -1660,6 +1663,369 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
     margin-left: auto;
     color: var(--primary);
     font-weight: 600;
+}
+
+.shortcut_hint {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--text-light);
+    background: var(--bg-hover);
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+/* ============ ACTIVITIES DROPDOWN PANEL ============ */
+
+.activities_dropdown_panel {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 100px;
+    width: 340px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+    z-index: 10000;
+    overflow: hidden;
+}
+
+.panel_header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+}
+
+.panel_title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-dark);
+}
+
+.panel_close_btn {
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    font-size: 20px;
+    color: var(--text-light);
+    cursor: pointer;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--transition);
+}
+
+.panel_close_btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-dark);
+}
+
+.activities_list {
+    max-height: 350px;
+    overflow-y: auto;
+}
+
+.activity_row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    cursor: pointer;
+    transition: var(--transition);
+    border-bottom: 1px solid var(--border);
+}
+
+.activity_row:last-child {
+    border-bottom: none;
+}
+
+.activity_row:hover {
+    background: var(--bg-hover);
+}
+
+.activity_icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    color: white;
+    flex-shrink: 0;
+}
+
+.activity_info {
+    flex: 1;
+    min-width: 0;
+}
+
+.activity_type_name {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-dark);
+    margin-bottom: 4px;
+}
+
+.activity_counts {
+    display: flex;
+    gap: 12px;
+    font-size: 12px;
+}
+
+.count_late {
+    color: var(--danger);
+    font-weight: 600;
+}
+
+.count_today {
+    color: var(--warning);
+    font-weight: 600;
+}
+
+.count_future {
+    color: var(--success);
+    font-weight: 600;
+}
+
+.no_activities {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    color: var(--text-light);
+    text-align: center;
+}
+
+.no_activities_icon {
+    font-size: 48px;
+    margin-bottom: 12px;
+}
+
+.panel_footer {
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+    background: var(--bg-hover);
+    text-align: center;
+}
+
+.view_all_link {
+    font-size: 13px;
+    color: var(--primary);
+    text-decoration: none;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.view_all_link:hover {
+    text-decoration: underline;
+}
+
+/* ============ MESSAGES DROPDOWN PANEL ============ */
+
+.messages_dropdown_panel {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 60px;
+    width: 380px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+    z-index: 10000;
+    overflow: hidden;
+}
+
+.messages_tabs {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    gap: 4px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+}
+
+.messages_tabs button {
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-medium);
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.messages_tabs button:hover {
+    background: var(--bg-hover);
+    color: var(--text-dark);
+}
+
+.messages_tabs button.tab_active {
+    background: var(--primary);
+    color: white;
+    font-weight: 600;
+}
+
+.new_message_btn {
+    margin-left: auto !important;
+    background: linear-gradient(135deg, var(--primary) 0%, #667eea 100%) !important;
+    color: white !important;
+    font-weight: 600 !important;
+}
+
+.new_message_btn:hover {
+    transform: scale(1.02);
+    box-shadow: 0 2px 8px rgba(26, 115, 232, 0.3);
+}
+
+.messages_list {
+    max-height: 380px;
+    overflow-y: auto;
+}
+
+.message_row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 16px;
+    cursor: pointer;
+    transition: var(--transition);
+    border-bottom: 1px solid var(--border);
+}
+
+.message_row:last-child {
+    border-bottom: none;
+}
+
+.message_row:hover {
+    background: var(--bg-hover);
+}
+
+.message_avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    overflow: hidden;
+    background: var(--primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.message_avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.avatar_placeholder_sm {
+    font-size: 16px;
+    color: white;
+}
+
+.message_content {
+    flex: 1;
+    min-width: 0;
+}
+
+.message_header_row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+}
+
+.message_sender {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-dark);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.message_time {
+    font-size: 11px;
+    color: var(--text-light);
+    flex-shrink: 0;
+}
+
+.message_preview {
+    font-size: 12px;
+    color: var(--text-medium);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block;
+}
+
+.message_unread_badge {
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    background: var(--primary);
+    color: white;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.no_messages {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    color: var(--text-light);
+    text-align: center;
+}
+
+.no_messages_icon {
+    font-size: 48px;
+    margin-bottom: 12px;
+}
+
+.messages_panel_footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 8px 12px;
+    border-top: 1px solid var(--border);
+    background: var(--bg-hover);
+}
+
+.view_toggle_btn {
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: transparent;
+    font-size: 18px;
+    color: var(--text-medium);
+    cursor: pointer;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--transition);
+}
+
+.view_toggle_btn:hover {
+    background: var(--border);
+    color: var(--text-dark);
 }
 
 /* ============ APP MENUBAR ============ */

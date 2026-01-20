@@ -51,6 +51,7 @@ export class ZohoDashboard extends Component {
             currentResId: false,
             currentDomain: [],
             currentContext: {},
+            currentViews: [],  // Store views from action [viewId, viewType] pairs
             availableViewTypes: [],
             viewProps: null,
             viewKey: 0,
@@ -95,6 +96,11 @@ export class ZohoDashboard extends Component {
             currentTime: new Date(),
             // User menu state
             userMenuOpen: false,
+            activitiesPanelOpen: false,
+            messagesPanelOpen: false,
+            messagesTab: "all",
+            activitiesSummary: [],
+            messagesList: [],
             activityCount: 0,
             messageCount: 0,
             companies: [],
@@ -320,7 +326,16 @@ export class ZohoDashboard extends Component {
         this.embeddedState.isClientAction = false;
         this.state.currentView = "embedded";
 
-        const viewModes = (actionRequest.view_mode || "list").split(",");
+        let viewModes = (actionRequest.view_mode || "list").split(",").map(v => v.trim());
+        // Remove 'hierarchy' if not available
+        let availableViewTypes = [];
+        if (actionRequest.views) {
+            availableViewTypes = actionRequest.views.map(v => v[1]);
+        }
+        // If 'hierarchy' is not in availableViewTypes, remove it from viewModes
+        if (!availableViewTypes.includes("hierarchy")) {
+            viewModes = viewModes.filter(v => v !== "hierarchy");
+        }
         let viewType = (viewModes[0] || "list").trim();
         if (viewType === "tree") viewType = "list";
 
@@ -361,6 +376,7 @@ export class ZohoDashboard extends Component {
                 viewType: this.embeddedState.currentViewType,
                 domain: [...(this.embeddedState.currentDomain || [])],
                 context: {...(this.embeddedState.currentContext || {})},
+                views: [...(this.embeddedState.currentViews || [])],
                 resId: this.embeddedState.currentResId,
                 title: this.embeddedState.viewTitle,
                 breadcrumbs: [...this.embeddedState.breadcrumbs],
@@ -398,9 +414,19 @@ export class ZohoDashboard extends Component {
         await this.loadViewBundles(actionRequest.res_model, viewType);
         await this.loadAvailableViewTypes(actionRequest.res_model);
 
-        // Adjust view type if not available
-        if (!this.embeddedState.availableViewTypes.includes(viewType)) {
-            viewType = this.embeddedState.availableViewTypes[0] || "list";
+        // Adjust view type if not available or is 'hierarchy' but not present
+        if (!this.embeddedState.availableViewTypes.includes(viewType) ||
+            (viewType === "hierarchy" && !this.embeddedState.availableViewTypes.includes("hierarchy"))) {
+            // Prefer list, then form, then any available
+            if (this.embeddedState.availableViewTypes.includes("list")) {
+                viewType = "list";
+            } else if (this.embeddedState.availableViewTypes.includes("form")) {
+                viewType = "form";
+            } else if (this.embeddedState.availableViewTypes.length > 0) {
+                viewType = this.embeddedState.availableViewTypes[0];
+            } else {
+                viewType = "list";
+            }
             this.embeddedState.currentViewType = viewType;
         }
 
@@ -532,6 +558,7 @@ export class ZohoDashboard extends Component {
                 viewType: this.embeddedState.currentViewType,
                 domain: [...(this.embeddedState.currentDomain || [])],
                 context: {...(this.embeddedState.currentContext || {})},
+                views: [...(this.embeddedState.currentViews || [])],
                 resId: this.embeddedState.currentResId,
                 title: this.embeddedState.viewTitle,
                 breadcrumbs: [...this.embeddedState.breadcrumbs],
@@ -551,6 +578,10 @@ export class ZohoDashboard extends Component {
     setupStatButtonInterceptor() {
         const self = this;
         
+        // Track the last kanban record that had a dropdown toggle clicked
+        // This helps us find the record context when dropdown items are in a Portal
+        this._lastKanbanRecordContext = null;
+        
         // Use event delegation to catch stat button clicks in CAPTURE phase
         this._statButtonClickHandler = async (event) => {
             // Only intercept when in embedded mode
@@ -566,23 +597,44 @@ export class ZohoDashboard extends Component {
                 if (el.classList && (
                     el.classList.contains('dropdown-toggle') ||
                     el.classList.contains('o_dropdown_toggler') ||
-                    el.classList.contains('o_dropdown_toggler_btn')
+                    el.classList.contains('o_dropdown_toggler_btn') ||
+                    el.classList.contains('o_kanban_manage_toggle_button') ||
+                    el.classList.contains('fa-ellipsis-v') ||
+                    el.classList.contains('fa-ellipsis-h')
                 )) return true;
                 if (el.hasAttribute && (
                     el.hasAttribute('data-bs-toggle') ||
                     el.hasAttribute('data-toggle') ||
                     el.hasAttribute('aria-expanded')
                 )) return true;
+                // Check for button with vertical dots icon
+                if (el.tagName === 'BUTTON' || el.tagName === 'A' || el.tagName === 'I') {
+                    const icon = el.querySelector('.fa-ellipsis-v, .fa-ellipsis-h, .oi-three-dots-vertical');
+                    if (icon) return true;
+                }
                 if (el.textContent && el.textContent.trim().toLowerCase() === 'more' && 
                     !el.classList.contains('dropdown-item')) return true;
                 return false;
             };
             
-            // Check if we're clicking on a dropdown toggle - let those work normally
+            // Check if we're clicking on a dropdown toggle - cache the kanban record context
             let currentEl = target;
             while (currentEl && currentEl !== document) {
                 if (isDropdownToggle(currentEl)) {
                     console.log("📋 Allowing dropdown toggle interaction");
+                    // Cache the kanban record context before the dropdown opens
+                    // Look for kanban record in ancestors
+                    const kanbanRecord = currentEl.closest('.o_kanban_record') || 
+                                        currentEl.closest('[data-id]') ||
+                                        currentEl.closest('article');
+                    if (kanbanRecord) {
+                        self._lastKanbanRecordContext = {
+                            element: kanbanRecord,
+                            resId: self.extractRecordIdFromElement(kanbanRecord),
+                            resModel: self.extractModelFromElement(kanbanRecord) || self.embeddedState.currentResModel
+                        };
+                        console.log("📌 Cached kanban record context:", self._lastKanbanRecordContext);
+                    }
                     return; // Let dropdown toggle work normally
                 }
                 // Stop at dropdown-menu - don't check further up for toggles
@@ -630,7 +682,7 @@ export class ZohoDashboard extends Component {
                                 return;
                             }
                         } catch (e) {
-                            console.warn("Could not find action:", e);
+                            console.debug("Could not find dropdown action:", e);
                         }
                     }
                 }
@@ -640,7 +692,20 @@ export class ZohoDashboard extends Component {
                     event.stopPropagation();
                     event.stopImmediatePropagation();
                     
-                    await self.executeObjectMethodAndHandleResult(buttonName);
+                    // Pass the dropdown item element to extract record context
+                    await self.executeObjectMethodAndHandleResult(buttonName, dropdownItem);
+                    return;
+                }
+                
+                // Handle dropdown items without explicit type (common in Odoo 18)
+                // These often call methods like button_immediate_install, button_immediate_upgrade, etc.
+                if (buttonName && !buttonType) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    event.stopImmediatePropagation();
+                    
+                    console.log("📋 Dropdown item without type, trying as object method:", buttonName);
+                    await self.executeObjectMethodAndHandleResult(buttonName, dropdownItem);
                     return;
                 }
             }
@@ -733,7 +798,7 @@ export class ZohoDashboard extends Component {
                         await self.loadActionById(actionId);
                         return;
                     } else {
-                        console.warn("⚠️ Could not resolve action:", buttonName);
+                        console.debug("Could not resolve action (trying fallback):", buttonName);
                         // Try to parse as XML ID even without dot
                         // Some actions may use underscores like 'action_open_payslips'
                         try {
@@ -749,7 +814,7 @@ export class ZohoDashboard extends Component {
                                 return;
                             }
                         } catch (e) {
-                            console.warn("Could not find action by name:", e);
+                            console.debug("Could not find action by name:", e);
                         }
                     }
                 }
@@ -761,7 +826,7 @@ export class ZohoDashboard extends Component {
                     event.stopImmediatePropagation();
                     
                     console.log("🔧 Executing object method:", buttonName);
-                    await self.executeObjectMethodAndHandleResult(buttonName);
+                    await self.executeObjectMethodAndHandleResult(buttonName, statButton);
                     return;
                 }
                 
@@ -805,13 +870,13 @@ export class ZohoDashboard extends Component {
                                 actionId = exactMatch ? exactMatch.id : action[0].id;
                             }
                         } catch (e) {
-                            console.warn("Could not find action:", e);
+                            console.debug("Could not find stat button action:", e);
                         }
                     }
                     
                     // Try as an object method (Python method call)
                     if (!actionId) {
-                        await self.executeObjectMethodAndHandleResult(buttonName);
+                        await self.executeObjectMethodAndHandleResult(buttonName, statButton);
                         return;
                     }
                     
@@ -821,7 +886,7 @@ export class ZohoDashboard extends Component {
                         return;
                     }
                     
-                    console.warn("⚠️ Could not resolve button action:", buttonName);
+                    console.debug("Could not resolve button action:", buttonName);
                 }
                 
                 return;
@@ -915,12 +980,180 @@ export class ZohoDashboard extends Component {
     }
 
     /**
-     * Execute an object method on the current record and handle any returned action
+     * Extract record ID from a DOM element (for kanban/list records)
+     * This looks for data attributes or parent containers that hold the record ID
      */
-    async executeObjectMethodAndHandleResult(methodName) {
+    extractRecordIdFromElement(element) {
+        if (!element) return null;
+        
+        let current = element;
+        while (current && current !== document) {
+            // Check common Odoo record ID patterns
+            // Odoo 18 uses data-id on kanban records
+            if (current.dataset && current.dataset.id) {
+                const id = parseInt(current.dataset.id, 10);
+                if (!isNaN(id)) {
+                    console.log("📌 Found record ID via dataset.id:", id);
+                    return id;
+                }
+            }
+            
+            // Check for o_kanban_record class (contains __owl__ with record data)
+            if (current.classList && current.classList.contains('o_kanban_record')) {
+                // Try multiple paths to get the record ID from OWL component
+                if (current.__owl__) {
+                    const owl = current.__owl__;
+                    
+                    // Path 1: component.props.record.resId
+                    if (owl.component?.props?.record?.resId) {
+                        console.log("📌 Found record ID via owl.component.props.record.resId:", owl.component.props.record.resId);
+                        return owl.component.props.record.resId;
+                    }
+                    
+                    // Path 2: component.record.resId
+                    if (owl.component?.record?.resId) {
+                        console.log("📌 Found record ID via owl.component.record.resId:", owl.component.record.resId);
+                        return owl.component.record.resId;
+                    }
+                    
+                    // Path 3: component.props.id
+                    if (owl.component?.props?.id) {
+                        const id = parseInt(owl.component.props.id, 10);
+                        if (!isNaN(id)) {
+                            console.log("📌 Found record ID via owl.component.props.id:", id);
+                            return id;
+                        }
+                    }
+                    
+                    // Path 4: bdom data (Odoo 18 specific)
+                    if (owl.bdom) {
+                        // Look through bdom for record data
+                        const findRecordId = (obj, depth = 0) => {
+                            if (depth > 5 || !obj) return null;
+                            if (obj.resId) return obj.resId;
+                            if (obj.id && typeof obj.id === 'number') return obj.id;
+                            if (obj.props?.record?.resId) return obj.props.record.resId;
+                            if (obj.component?.props?.record?.resId) return obj.component.props.record.resId;
+                            return null;
+                        };
+                        const bdId = findRecordId(owl.bdom);
+                        if (bdId) {
+                            console.log("📌 Found record ID via bdom:", bdId);
+                            return bdId;
+                        }
+                    }
+                }
+                
+                // Also try to find it in the element's text content (module name -> search)
+                // This is a fallback for the Apps kanban where ID might not be directly accessible
+            }
+            
+            // Check for data-res-id attribute
+            if (current.hasAttribute && current.hasAttribute('data-res-id')) {
+                const id = parseInt(current.getAttribute('data-res-id'), 10);
+                if (!isNaN(id)) {
+                    console.log("📌 Found record ID via data-res-id:", id);
+                    return id;
+                }
+            }
+            
+            // Check for list row data-id
+            if (current.tagName === 'TR' && current.dataset && current.dataset.id) {
+                const id = parseInt(current.dataset.id, 10);
+                if (!isNaN(id)) {
+                    console.log("📌 Found record ID via TR dataset.id:", id);
+                    return id;
+                }
+            }
+            
+            // Check for article element with data-id (Odoo 18 kanban)
+            if (current.tagName === 'ARTICLE' && current.dataset && current.dataset.id) {
+                const id = parseInt(current.dataset.id, 10);
+                if (!isNaN(id)) {
+                    console.log("📌 Found record ID via ARTICLE dataset.id:", id);
+                    return id;
+                }
+            }
+            
+            current = current.parentElement;
+        }
+        
+        // Not finding a record ID here is often expected (e.g., dropdown in Portal)
+        // We have fallback methods, so this is just debug info
+        console.debug("Could not extract record ID from element - will use fallback");
+        return null;
+    }
+
+    /**
+     * Extract the model from a DOM element context
+     */
+    extractModelFromElement(element) {
+        if (!element) return null;
+        
+        let current = element;
+        while (current && current !== document) {
+            // Check for o_kanban_record with component data
+            if (current.classList && current.classList.contains('o_kanban_record')) {
+                if (current.__owl__) {
+                    const owl = current.__owl__;
+                    
+                    // Path 1: component.props.record.resModel
+                    if (owl.component?.props?.record?.resModel) {
+                        return owl.component.props.record.resModel;
+                    }
+                    
+                    // Path 2: component.record.resModel
+                    if (owl.component?.record?.resModel) {
+                        return owl.component.record.resModel;
+                    }
+                    
+                    // Path 3: component.props.resModel
+                    if (owl.component?.props?.resModel) {
+                        return owl.component.props.resModel;
+                    }
+                }
+            }
+            
+            // Check for data-res-model attribute
+            if (current.hasAttribute && current.hasAttribute('data-res-model')) {
+                return current.getAttribute('data-res-model');
+            }
+            
+            current = current.parentElement;
+        }
+        return null;
+    }
+
+    /**
+     * Execute an object method on a record and handle any returned action
+     * @param {string} methodName - The name of the method to execute
+     * @param {HTMLElement} sourceElement - Optional source element to extract record context from
+     */
+    async executeObjectMethodAndHandleResult(methodName, sourceElement = null) {
         try {
-            const resModel = this.embeddedState.currentResModel;
-            const resId = this.embeddedState.currentResId;
+            // Try to get record context from the source element first (for kanban/list items)
+            let resModel = sourceElement ? this.extractModelFromElement(sourceElement) : null;
+            let resId = sourceElement ? this.extractRecordIdFromElement(sourceElement) : null;
+            
+            // Fallback to cached kanban record context (for dropdown items in Portals)
+            if (!resId && this._lastKanbanRecordContext) {
+                console.log("📌 Using cached kanban record context");
+                if (!resModel) resModel = this._lastKanbanRecordContext.resModel;
+                if (!resId) resId = this._lastKanbanRecordContext.resId;
+            }
+            
+            // Fallback to current embedded state
+            if (!resModel) resModel = this.embeddedState.currentResModel;
+            if (!resId) resId = this.embeddedState.currentResId;
+            
+            // Special fallback for ir.module.module (Apps kanban) - find by technical name
+            if (resModel === 'ir.module.module' && !resId) {
+                // Try using cached element or source element
+                const elementToSearch = this._lastKanbanRecordContext?.element || sourceElement;
+                if (elementToSearch) {
+                    resId = await this.findModuleIdFromElement(elementToSearch);
+                }
+            }
             
             if (resModel && resId) {
                 console.log("🔧 Executing object method:", methodName, "on", resModel, resId);
@@ -953,19 +1186,130 @@ export class ZohoDashboard extends Component {
                         return;
                     }
                     
-                    // For other action types, use the patched doAction
-                    await this.actionService.doAction(result);
+                    // For URL actions (like "Learn More")
+                    if (result.type === 'ir.actions.act_url') {
+                        if (result.url) {
+                            if (result.target === 'self') {
+                                window.location.href = result.url;
+                            } else {
+                                window.open(result.url, '_blank');
+                            }
+                        }
+                        return;
+                    }
+                    
+                    // For other action types, use the original doAction to bypass our interceptor
+                    await this._originalDoAction(result);
+                } else if (result === true || result === false || result === undefined) {
+                    // Method completed without returning an action - refresh the view
+                    console.log("📊 Method completed, refreshing view...");
+                    // Reload the current action to refresh the view
+                    if (this.embeddedState.currentActionId) {
+                        await this.loadActionById(this.embeddedState.currentActionId);
+                    }
                 }
             } else {
-                console.warn("No resModel or resId available for object method execution");
+                console.debug("No resModel or resId available for object method execution. Model:", resModel, "ID:", resId);
+                this.notification.add(
+                    _t("Unable to execute action: No record selected"),
+                    { type: "warning" }
+                );
             }
         } catch (e) {
             console.error("Error executing method:", e);
             this.notification.add(
-                _t("Error: ") + (e.message || "Failed to execute action"),
+                _t("Error: ") + (e.message || e.data?.message || "Failed to execute action"),
                 { type: "danger" }
             );
         }
+    }
+    
+    /**
+     * Find module ID from element by looking for the technical name in the kanban card
+     * This is a fallback for Apps kanban when __owl__ doesn't expose the record ID
+     */
+    async findModuleIdFromElement(element) {
+        if (!element) return null;
+        
+        // Find the kanban card container
+        const kanbanCard = element.closest('.o_kanban_record') || element.closest('article') || element;
+        if (!kanbanCard) return null;
+        
+        console.log("🔍 Searching for module technical name in:", kanbanCard.outerHTML?.substring(0, 500));
+        
+        let technicalName = null;
+        
+        // Method 1: Look for data attribute
+        if (kanbanCard.dataset && kanbanCard.dataset.name) {
+            technicalName = kanbanCard.dataset.name;
+            console.log("📌 Found via dataset.name:", technicalName);
+        }
+        
+        // Method 2: Look for specific class that contains module name in Odoo Apps
+        // The technical name is usually displayed in a smaller font below the module name
+        if (!technicalName) {
+            // Look for elements with specific styling that typically contain technical names
+            const candidates = kanbanCard.querySelectorAll(
+                '.text-muted, .o_text_overflow, small, .text-info, .badge, ' + 
+                '.oe_module_name, .oe_module_desc, [data-module-name]'
+            );
+            
+            for (const el of candidates) {
+                let text = el.getAttribute('data-module-name') || 
+                          el.getAttribute('title') || 
+                          el.textContent?.trim();
+                
+                // Module technical names are lowercase with underscores, no spaces
+                if (text && /^[a-z][a-z0-9_]*$/.test(text) && text.length > 2 && text.length < 50) {
+                    technicalName = text;
+                    console.log("📌 Found via candidate element:", technicalName);
+                    break;
+                }
+            }
+        }
+        
+        // Method 3: Try to find in all text nodes
+        if (!technicalName) {
+            const allText = kanbanCard.querySelectorAll('span, div, small, a');
+            for (const el of allText) {
+                const text = el.textContent?.trim();
+                // Module technical names are lowercase with underscores
+                if (text && /^[a-z][a-z0-9_]*$/.test(text) && text.length > 2 && text.length < 50) {
+                    // Avoid common false positives
+                    const falsePositives = ['module', 'upgrade', 'install', 'activate', 'learn', 'more', 'info'];
+                    if (!falsePositives.includes(text.toLowerCase())) {
+                        technicalName = text;
+                        console.log("📌 Found via text content:", technicalName);
+                        break;
+                    }
+                }
+            }
+        }
+        
+        if (!technicalName) {
+            console.debug("Could not find module technical name in kanban card");
+            return null;
+        }
+        
+        console.log("🔍 Looking up module by technical name:", technicalName);
+        
+        try {
+            const modules = await this.orm.searchRead(
+                'ir.module.module',
+                [['name', '=', technicalName]],
+                ['id'],
+                { limit: 1 }
+            );
+            
+            if (modules && modules.length > 0) {
+                console.log("📌 Found module ID:", modules[0].id);
+                return modules[0].id;
+            }
+        } catch (e) {
+            console.error("Error looking up module:", e);
+        }
+        
+        return null;
     }
 
         /**
@@ -1748,6 +2092,22 @@ export class ZohoDashboard extends Component {
                     this.state.userMenuOpen = false;
                 }
             }
+            // Close activities panel if clicking outside
+            if (this.state.activitiesPanelOpen) {
+                const panel = event.target.closest('.activities_dropdown_panel');
+                const btn = event.target.closest('.header_icon_btn');
+                if (!panel && !btn) {
+                    this.state.activitiesPanelOpen = false;
+                }
+            }
+            // Close messages panel if clicking outside
+            if (this.state.messagesPanelOpen) {
+                const panel = event.target.closest('.messages_dropdown_panel');
+                const btn = event.target.closest('.header_icon_btn');
+                if (!panel && !btn) {
+                    this.state.messagesPanelOpen = false;
+                }
+            }
         };
         document.addEventListener('click', this._clickOutsideHandler);
     }
@@ -2425,7 +2785,7 @@ export class ZohoDashboard extends Component {
          * Build calendar props - separated for clarity
          */
         _buildCalendarProps(resModel, domain, context, actionId) {
-            const cleanDomain = this.cleanDomain(domain);
+            const cleanDomain = this.cleanDomain(this.replaceDomainVariables(domain));
             const cleanContext = this.cleanContext(context);
 
             const props = {
@@ -2465,9 +2825,14 @@ export class ZohoDashboard extends Component {
                 return;
             }
             
-            const cleanDomain = this.cleanDomain(domain);
+            const cleanDomain = this.cleanDomain(this.replaceDomainVariables(domain));
             const cleanContext = this.cleanContext(context);
             const self = this;
+
+            // Add user ID to context if available (helps with uid-based domains)
+            if (this.state.currentUserId && !cleanContext.uid) {
+                cleanContext.uid = this.state.currentUserId;
+            }
 
             const props = {
                 resModel: resModel,
@@ -2488,6 +2853,9 @@ export class ZohoDashboard extends Component {
                 loadIrFilters: true,
                 loadActionMenus: true,
                 searchViewId: false,
+                // Explicitly enable CRUD operations for all views
+                allowSelectionExport: true,
+                showButtons: true,
                 selectRecord: (id, opts) => this.handleSelectRecord(resModel, id, opts),
                 createRecord: () => this.handleCreateRecord(resModel),
                 // CRITICAL: Custom action handler to intercept stat button clicks
@@ -2545,6 +2913,18 @@ export class ZohoDashboard extends Component {
             if (this.embeddedState.currentActionId) {
                 props.actionId = this.embeddedState.currentActionId;
             }
+            
+            // Add views from the action to ensure the correct view is used
+            // views is an array of [viewId, viewType] pairs
+            if (this.embeddedState.currentViews && this.embeddedState.currentViews.length > 0) {
+                props.views = this.embeddedState.currentViews;
+                
+                // Also set the specific viewId for the current view type
+                const currentViewInfo = this.embeddedState.currentViews.find(v => v[1] === viewType);
+                if (currentViewInfo && currentViewInfo[0]) {
+                    props.viewId = currentViewInfo[0];
+                }
+            }
 
             if (viewType === "form") {
                 if (resId) {
@@ -2588,10 +2968,19 @@ export class ZohoDashboard extends Component {
         
         const cleanedContext = {};
         
+        // Keys to exclude - these restrict functionality in embedded views
+        const excludeKeys = [
+            'create', 'edit', 'delete', 'duplicate', 
+            'form_view_initial_mode', 'import', 'export_xlsx'
+        ];
+        
         for (const [key, value] of Object.entries(context)) {
             if (value === undefined || value === null) continue;
             if (typeof value === 'string' && value.includes('uid')) continue;
             if (typeof value === 'string' && value.includes('active_id')) continue;
+            
+            // Skip restrictive flags to allow full functionality
+            if (excludeKeys.includes(key)) continue;
             
             if (typeof value === 'boolean' || typeof value === 'number' || typeof value === 'string') {
                 cleanedContext[key] = value;
@@ -2613,17 +3002,19 @@ export class ZohoDashboard extends Component {
         if (!domain) return [];
         if (!Array.isArray(domain)) return [];
         
+        // Return domain as-is - Odoo will handle uid and other special values
+        // We only filter out completely invalid entries
         try {
             return domain.filter(item => {
+                // Keep logical operators
+                if (typeof item === 'string' && ['&', '|', '!'].includes(item)) {
+                    return true;
+                }
+                // Keep valid domain tuples
                 if (Array.isArray(item) && item.length === 3) {
                     const [field, operator, value] = item;
                     if (typeof field !== 'string') return false;
-                    if (typeof value === 'string' && (value.includes('uid') || value.includes('active_id'))) {
-                        return false;
-                    }
-                    return true;
-                }
-                if (typeof item === 'string' && ['&', '|', '!'].includes(item)) {
+                    // Don't filter out uid - it's a valid Odoo variable
                     return true;
                 }
                 return false;
@@ -3077,6 +3468,7 @@ export class ZohoDashboard extends Component {
                     viewType: this.embeddedState.currentViewType,
                     domain: [...this.embeddedState.currentDomain],
                     context: {...this.embeddedState.currentContext},
+                    views: [...(this.embeddedState.currentViews || [])],
                     resId: this.embeddedState.currentResId,
                     title: this.embeddedState.viewTitle,
                     breadcrumbs: [...this.embeddedState.breadcrumbs],
@@ -3130,8 +3522,17 @@ export class ZohoDashboard extends Component {
                         }, { target: "new" });
                     }
 
-                    const viewModes = (action.view_mode || "list").split(",");
-                    let viewType = viewModes[0].trim();
+
+                    let viewModes = (action.view_mode || "list").split(",").map(v => v.trim());
+                    // Remove 'hierarchy' if not available
+                    let availableViewTypes = [];
+                    if (action.views) {
+                        availableViewTypes = action.views.map(v => v[1]);
+                    }
+                    if (!availableViewTypes.includes("hierarchy")) {
+                        viewModes = viewModes.filter(v => v !== "hierarchy");
+                    }
+                    let viewType = (viewModes[0] || "list").trim();
                     if (viewType === "tree") viewType = "list";
 
                     const domain = this.parseDomainSafe(action.domain);
@@ -3144,6 +3545,9 @@ export class ZohoDashboard extends Component {
                     this.embeddedState.currentResId = action.res_id || false;
                     this.embeddedState.currentActionId = numericId;
                     this.embeddedState.isClientAction = false;
+                    
+                    // Store the views from the action (list of [viewId, viewType] pairs)
+                    this.embeddedState.currentViews = action.views || [];
 
                     if (action.name) {
                         this.embeddedState.viewTitle = action.name;
@@ -3165,11 +3569,21 @@ export class ZohoDashboard extends Component {
 
                     // Load bundles for the view type
                     await this.loadViewBundles(action.res_model, viewType);
-                    
                     await this.loadAvailableViewTypes(action.res_model);
 
-                    if (!this.embeddedState.availableViewTypes.includes(viewType)) {
-                        viewType = this.embeddedState.availableViewTypes[0] || "list";
+                    // Adjust view type if not available or is 'hierarchy' but not present
+                    if (!this.embeddedState.availableViewTypes.includes(viewType) ||
+                        (viewType === "hierarchy" && !this.embeddedState.availableViewTypes.includes("hierarchy"))) {
+                        // Prefer list, then form, then any available
+                        if (this.embeddedState.availableViewTypes.includes("list")) {
+                            viewType = "list";
+                        } else if (this.embeddedState.availableViewTypes.includes("form")) {
+                            viewType = "form";
+                        } else if (this.embeddedState.availableViewTypes.length > 0) {
+                            viewType = this.embeddedState.availableViewTypes[0];
+                        } else {
+                            viewType = "list";
+                        }
                         this.embeddedState.currentViewType = viewType;
                     }
 
@@ -3244,6 +3658,7 @@ export class ZohoDashboard extends Component {
         this.embeddedState.currentViewType = previousState.viewType;
         this.embeddedState.currentDomain = previousState.domain;
         this.embeddedState.currentContext = previousState.context;
+        this.embeddedState.currentViews = previousState.views || [];
         this.embeddedState.currentResId = previousState.resId;
         this.embeddedState.viewTitle = previousState.title;
         this.embeddedState.breadcrumbs = previousState.breadcrumbs;
@@ -3337,9 +3752,68 @@ export class ZohoDashboard extends Component {
     parseDomainSafe(domainValue) {
         if (!domainValue) return [];
         if (Array.isArray(domainValue)) {
-            return this.cleanDomain(domainValue);
+            return this.cleanDomain(this.replaceDomainVariables(domainValue));
+        }
+        // Handle string domains (e.g., "[('field', '=', 'value')]")
+        if (typeof domainValue === 'string') {
+            try {
+                // Replace uid with actual user ID before parsing
+                const userId = this.state.currentUserId || this.state.employee?.user_id;
+                let domainStr = domainValue;
+                
+                // Replace Python-style uid with actual numeric value
+                // Match uid that's not part of a larger word (e.g., not 'create_uid')
+                // This handles: uid, (uid), =uid, in uid, etc.
+                if (userId) {
+                    // Replace standalone uid (not part of field name like create_uid)
+                    // Match uid when it appears as a value (after operators)
+                    domainStr = domainStr.replace(/,\s*uid\s*\)/g, `, ${userId})`);
+                    domainStr = domainStr.replace(/,\s*uid\s*]/g, `, ${userId}]`);
+                }
+                
+                // Convert Python tuple syntax to JSON array syntax
+                // Replace ( with [ and ) with ] for tuples inside the domain
+                // But be careful: ('field', '=', 'value') -> ["field", "=", "value"]
+                domainStr = domainStr
+                    .replace(/\(/g, '[')  // Replace ( with [
+                    .replace(/\)/g, ']')  // Replace ) with ]
+                    .replace(/'/g, '"')   // Replace ' with "
+                    .replace(/True/g, 'true')
+                    .replace(/False/g, 'false')
+                    .replace(/None/g, 'null');
+                
+                // Try to parse as JSON
+                const parsed = JSON.parse(domainStr);
+                if (Array.isArray(parsed)) {
+                    return this.cleanDomain(this.replaceDomainVariables(parsed));
+                }
+            } catch (e) {
+                // If parsing fails, log at debug level and return empty domain
+                // The server will handle the domain correctly, we just can't use it client-side
+                console.debug("Domain string not parseable client-side (will be handled server-side):", domainValue);
+            }
         }
         return [];
+    }
+
+    /**
+     * Replace uid and other variables in domain with actual values
+     */
+    replaceDomainVariables(domain) {
+        if (!Array.isArray(domain)) return domain;
+        
+        const userId = this.state.currentUserId || this.state.employee?.user_id;
+        
+        return domain.map(item => {
+            if (Array.isArray(item) && item.length === 3) {
+                const [field, operator, value] = item;
+                // Replace 'uid' string value with actual user ID
+                if (value === 'uid' && userId) {
+                    return [field, operator, userId];
+                }
+            }
+            return item;
+        });
     }
 
     parseContextSafe(contextValue) {
@@ -3557,6 +4031,7 @@ export class ZohoDashboard extends Component {
         this.embeddedState.currentResId = false;
         this.embeddedState.currentDomain = [];
         this.embeddedState.currentContext = {};
+        this.embeddedState.currentViews = [];
         this.embeddedState.currentViewType = "list";
         this.embeddedState.availableViewTypes = [];
         this.embeddedState.viewProps = null;
@@ -3927,11 +4402,224 @@ export class ZohoDashboard extends Component {
 
     // User Menu Methods
     toggleUserMenu() {
+        this.closeActivitiesPanel();
+        this.closeMessagesPanel();
         this.state.userMenuOpen = !this.state.userMenuOpen;
     }
 
     closeUserMenu() {
         this.state.userMenuOpen = false;
+    }
+
+    // Activities Panel Methods
+    async toggleActivitiesPanel() {
+        this.closeUserMenu();
+        this.closeMessagesPanel();
+        const wasOpen = this.state.activitiesPanelOpen;
+        this.state.activitiesPanelOpen = !wasOpen;
+        if (!wasOpen) {
+            await this.loadActivitiesSummary();
+        }
+    }
+
+    closeActivitiesPanel() {
+        this.state.activitiesPanelOpen = false;
+    }
+
+    async loadActivitiesSummary() {
+        if (!this.state.currentUserId) return;
+        try {
+            // Load activities grouped by activity type
+            const activities = await this.orm.searchRead(
+                "mail.activity",
+                [["user_id", "=", this.state.currentUserId]],
+                ["activity_type_id", "date_deadline", "res_model", "res_name", "summary"]
+            );
+
+            // Group activities by type and categorize by date
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const typeMap = {};
+
+            for (const act of activities) {
+                const typeName = act.activity_type_id ? act.activity_type_id[1] : "Other";
+                const typeId = act.activity_type_id ? act.activity_type_id[0] : 0;
+                
+                if (!typeMap[typeId]) {
+                    typeMap[typeId] = {
+                        type: typeId,
+                        name: typeName,
+                        icon: this.getActivityIcon(typeName),
+                        color: this.getActivityColor(typeName),
+                        overdue: 0,
+                        today: 0,
+                        planned: 0
+                    };
+                }
+
+                const deadline = new Date(act.date_deadline);
+                deadline.setHours(0, 0, 0, 0);
+
+                if (deadline < today) {
+                    typeMap[typeId].overdue++;
+                } else if (deadline.getTime() === today.getTime()) {
+                    typeMap[typeId].today++;
+                } else {
+                    typeMap[typeId].planned++;
+                }
+            }
+
+            this.state.activitiesSummary = Object.values(typeMap);
+        } catch (error) {
+            console.debug("Failed to load activities summary:", error);
+            this.state.activitiesSummary = [];
+        }
+    }
+
+    getActivityIcon(typeName) {
+        const name = (typeName || "").toLowerCase();
+        if (name.includes("task")) return "📋";
+        if (name.includes("todo") || name.includes("to-do") || name.includes("to do")) return "✓";
+        if (name.includes("call")) return "📞";
+        if (name.includes("meet")) return "📅";
+        if (name.includes("email") || name.includes("mail")) return "✉️";
+        if (name.includes("upload") || name.includes("document")) return "📎";
+        return "🎯";
+    }
+
+    getActivityColor(typeName) {
+        const name = (typeName || "").toLowerCase();
+        if (name.includes("task")) return "#875A7B";
+        if (name.includes("todo") || name.includes("to-do")) return "#17a2b8";
+        if (name.includes("call")) return "#28a745";
+        if (name.includes("meet")) return "#ffc107";
+        if (name.includes("email") || name.includes("mail")) return "#dc3545";
+        if (name.includes("upload") || name.includes("document")) return "#6c757d";
+        return "#007bff";
+    }
+
+    async openActivityType(typeId) {
+        this.closeActivitiesPanel();
+        if (!this.state.currentUserId) return;
+        const domain = [["user_id", "=", this.state.currentUserId]];
+        if (typeId) {
+            domain.push(["activity_type_id", "=", typeId]);
+        }
+        this.embeddedState.activeSidebarItem = "operations";
+        await this.loadEmbeddedView("mail.activity", "Activities", domain, "list");
+    }
+
+    async openAllActivities() {
+        this.closeActivitiesPanel();
+        if (!this.state.currentUserId) return;
+        this.embeddedState.activeSidebarItem = "operations";
+        await this.loadEmbeddedView("mail.activity", "All Activities", [
+            ["user_id", "=", this.state.currentUserId],
+        ], "list");
+    }
+
+    // Messages Panel Methods
+    async toggleMessagesPanel() {
+        this.closeUserMenu();
+        this.closeActivitiesPanel();
+        const wasOpen = this.state.messagesPanelOpen;
+        this.state.messagesPanelOpen = !wasOpen;
+        if (!wasOpen) {
+            await this.loadMessagesList();
+        }
+    }
+
+    closeMessagesPanel() {
+        this.state.messagesPanelOpen = false;
+    }
+
+    setMessagesTab(tab) {
+        this.state.messagesTab = tab;
+        this.loadMessagesList();
+    }
+
+    async loadMessagesList() {
+        if (!this.state.currentUserId) return;
+        try {
+            let channels = [];
+            const tab = this.state.messagesTab;
+
+            // Try to load from discuss.channel (Odoo 18) or mail.channel (older versions)
+            try {
+                if (tab === "all" || tab === "channels") {
+                    channels = await this.orm.searchRead(
+                        "discuss.channel",
+                        [["channel_member_ids.partner_id.user_ids", "in", [this.state.currentUserId]]],
+                        ["name", "channel_type", "message_unread_counter", "image_128"],
+                        { limit: 20 }
+                    );
+                }
+                
+                if (tab === "chats" && channels.length > 0) {
+                    channels = channels.filter(c => c.channel_type === "chat");
+                } else if (tab === "channels" && channels.length > 0) {
+                    channels = channels.filter(c => c.channel_type === "channel" || c.channel_type === "group");
+                }
+            } catch (e) {
+                // Fallback to mail.channel for older Odoo versions
+                try {
+                    channels = await this.orm.searchRead(
+                        "mail.channel",
+                        [],
+                        ["name", "channel_type", "message_unread_counter", "image_128"],
+                        { limit: 20 }
+                    );
+                } catch (e2) {
+                    console.debug("Could not load channels:", e2);
+                }
+            }
+
+            this.state.messagesList = channels.map(ch => ({
+                id: ch.id,
+                name: ch.name || "Direct Message",
+                icon: ch.channel_type === "chat" ? "👤" : "#",
+                preview: "",
+                date: "",
+                unread: ch.message_unread_counter || 0,
+                avatar: ch.image_128 ? `data:image/png;base64,${ch.image_128}` : null,
+                channelType: ch.channel_type
+            }));
+        } catch (error) {
+            console.debug("Failed to load messages list:", error);
+            this.state.messagesList = [];
+        }
+    }
+
+    async openConversation(msg) {
+        this.closeMessagesPanel();
+        try {
+            // Try to open the discuss app with the specific channel
+            const discussApp = this.state.apps.find(app => 
+                app.name.toLowerCase().includes("discuss") || 
+                app.name.toLowerCase().includes("inbox")
+            );
+            if (discussApp) {
+                await this.loadEmbeddedApp(discussApp);
+            }
+        } catch (error) {
+            console.debug("Could not open conversation:", error);
+        }
+    }
+
+    async openNewMessageComposer() {
+        this.closeMessagesPanel();
+        try {
+            // Open Discuss app to compose new message
+            const discussApp = this.state.apps.find(app => 
+                app.name.toLowerCase().includes("discuss") || 
+                app.name.toLowerCase().includes("inbox")
+            );
+            if (discussApp) {
+                await this.loadEmbeddedApp(discussApp);
+            }
+        } catch (error) {
+            this.notification.add(_t("Could not open message composer"), { type: "warning" });
+        }
     }
 
     async openActivities() {
@@ -3965,6 +4653,38 @@ export class ZohoDashboard extends Component {
         } catch (error) {
             this.notification.add(_t("Could not open messages"), { type: "warning" });
         }
+    }
+
+    // User menu item actions
+    openDocumentation() {
+        this.closeUserMenu();
+        window.open("https://www.odoo.com/documentation/18.0/", "_blank");
+    }
+
+    openSupport() {
+        this.closeUserMenu();
+        window.open("https://www.odoo.com/help", "_blank");
+    }
+
+    openShortcuts() {
+        this.closeUserMenu();
+        // Trigger the command palette (Ctrl+K equivalent)
+        try {
+            const event = new KeyboardEvent("keydown", {
+                key: "k",
+                code: "KeyK",
+                ctrlKey: true,
+                bubbles: true
+            });
+            document.dispatchEvent(event);
+        } catch (e) {
+            this.notification.add(_t("Press Ctrl+K to open command palette"), { type: "info" });
+        }
+    }
+
+    openOdooAccount() {
+        this.closeUserMenu();
+        window.open("https://accounts.odoo.com/my/home", "_blank");
     }
 
     async openUserPreferences() {

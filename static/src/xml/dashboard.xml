@@ -14,7 +14,7 @@
                 <!-- PERSISTENT LEFT SIDEBAR -->
                 <aside class="zoho_persistent_sidebar">
                     <div class="zoho_sidebar_brand">
-                        <img class="brand_logo" src="/hrms_dashboard/static/description/perfectHR.jpg" alt="HR Dashboard"/>
+                        <img class="brand_logo" src="/hrms_dashboard/static/description/perfectHR.png" alt="HR Dashboard"/>
                     </div>
                     <nav class="zoho_sidebar_nav">
                         <t t-foreach="sidebarItems" t-as="item" t-key="item.id">
@@ -73,16 +73,104 @@
                             
                             <!-- User Menu Icons -->
                             <div class="header_user_menu">
-                                <!-- Activities -->
-                                <div class="header_icon_btn" t-on-click="openActivities" title="Activities">
+                                <!-- Activities Dropdown -->
+                                <div class="header_icon_btn" t-on-click.stop="toggleActivitiesPanel" title="Activities">
                                     <span class="icon_emoji">🕐</span>
                                     <span t-if="state.activityCount > 0" class="icon_badge" t-esc="state.activityCount"/>
                                 </div>
                                 
-                                <!-- Messages -->
-                                <div class="header_icon_btn" t-on-click="openMessages" title="Messages">
+                                <!-- Activities Panel -->
+                                <div t-if="state.activitiesPanelOpen" class="activities_dropdown_panel">
+                                    <div class="panel_header">
+                                        <span class="panel_title">Activities</span>
+                                        <button class="panel_close_btn" t-on-click.stop="closeActivitiesPanel">×</button>
+                                    </div>
+                                    <div class="activities_list">
+                                        <t t-if="state.activitiesSummary and state.activitiesSummary.length > 0">
+                                            <t t-foreach="state.activitiesSummary" t-as="activity" t-key="activity.type">
+                                                <div class="activity_row" t-on-click.stop="() => this.openActivityType(activity.type)">
+                                                    <div class="activity_icon" t-att-style="'background-color:' + (activity.color || '#875A7B')">
+                                                        <span t-esc="activity.icon || '✓'"/>
+                                                    </div>
+                                                    <div class="activity_info">
+                                                        <span class="activity_type_name" t-esc="activity.name"/>
+                                                        <span class="activity_counts">
+                                                            <span class="count_late" t-if="activity.overdue > 0">
+                                                                <t t-esc="activity.overdue"/> Late
+                                                            </span>
+                                                            <span class="count_today" t-if="activity.today > 0">
+                                                                <t t-esc="activity.today"/> Today
+                                                            </span>
+                                                            <span class="count_future" t-if="activity.planned > 0">
+                                                                <t t-esc="activity.planned"/> Future
+                                                            </span>
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </t>
+                                        </t>
+                                        <t t-else="">
+                                            <div class="no_activities">
+                                                <span class="no_activities_icon">✅</span>
+                                                <span>No pending activities</span>
+                                            </div>
+                                        </t>
+                                    </div>
+                                    <div class="panel_footer">
+                                        <a class="view_all_link" t-on-click.stop="openAllActivities">View all activities</a>
+                                    </div>
+                                </div>
+                                
+                                <!-- Messages Dropdown -->
+                                <div class="header_icon_btn" t-on-click.stop="toggleMessagesPanel" title="Messages">
                                     <span class="icon_emoji">💬</span>
                                     <span t-if="state.messageCount > 0" class="icon_badge" t-esc="state.messageCount"/>
+                                </div>
+                                
+                                <!-- Messages Panel -->
+                                <div t-if="state.messagesPanelOpen" class="messages_dropdown_panel">
+                                    <div class="messages_tabs">
+                                        <button t-att-class="{'tab_active': state.messagesTab === 'all'}" 
+                                                t-on-click.stop="() => this.setMessagesTab('all')">All</button>
+                                        <button t-att-class="{'tab_active': state.messagesTab === 'chats'}" 
+                                                t-on-click.stop="() => this.setMessagesTab('chats')">Chats</button>
+                                        <button t-att-class="{'tab_active': state.messagesTab === 'channels'}" 
+                                                t-on-click.stop="() => this.setMessagesTab('channels')">Channels</button>
+                                        <button class="new_message_btn" t-on-click.stop="openNewMessageComposer">New Message</button>
+                                    </div>
+                                    <div class="messages_list">
+                                        <t t-if="state.messagesList and state.messagesList.length > 0">
+                                            <t t-foreach="state.messagesList" t-as="msg" t-key="msg.id">
+                                                <div class="message_row" t-on-click.stop="() => this.openConversation(msg)">
+                                                    <div class="message_avatar">
+                                                        <t t-if="msg.avatar">
+                                                            <img t-att-src="msg.avatar" alt=""/>
+                                                        </t>
+                                                        <t t-else="">
+                                                            <span class="avatar_placeholder_sm" t-esc="msg.icon || '#'"/>
+                                                        </t>
+                                                    </div>
+                                                    <div class="message_content">
+                                                        <div class="message_header_row">
+                                                            <span class="message_sender" t-esc="msg.name"/>
+                                                            <span class="message_time" t-esc="msg.date"/>
+                                                        </div>
+                                                        <span class="message_preview" t-esc="msg.preview"/>
+                                                    </div>
+                                                    <span t-if="msg.unread > 0" class="message_unread_badge" t-esc="msg.unread"/>
+                                                </div>
+                                            </t>
+                                        </t>
+                                        <t t-else="">
+                                            <div class="no_messages">
+                                                <span class="no_messages_icon">📭</span>
+                                                <span>No messages</span>
+                                            </div>
+                                        </t>
+                                    </div>
+                                    <div class="messages_panel_footer">
+                                        <button class="view_toggle_btn" title="List view">≡</button>
+                                    </div>
                                 </div>
                                 
                                 <!-- Notifications Bell -->
@@ -91,7 +179,7 @@
                                 </div>
                                 
                                 <!-- User Profile Dropdown -->
-                                <div class="header_user_dropdown" t-on-click="toggleUserMenu">
+                                <div class="header_user_dropdown" t-on-click.stop="toggleUserMenu">
                                     <div class="user_avatar_small">
                                         <t t-if="state.employee?.image_128">
                                             <img t-att-src="'data:image/png;base64,' + state.employee.image_128" alt=""/>
@@ -123,6 +211,24 @@
                                             </div>
                                         </div>
                                         <div class="dropdown_divider"/>
+                                        
+                                        <!-- Documentation & Support -->
+                                        <div class="dropdown_item" t-on-click.stop="openDocumentation">
+                                            <span class="dropdown_icon">📖</span>
+                                            <span>Documentation</span>
+                                        </div>
+                                        <div class="dropdown_item" t-on-click.stop="openSupport">
+                                            <span class="dropdown_icon">🎧</span>
+                                            <span>Support</span>
+                                        </div>
+                                        <div class="dropdown_item" t-on-click.stop="openShortcuts">
+                                            <span class="dropdown_icon">⌨️</span>
+                                            <span>Shortcuts</span>
+                                            <span class="shortcut_hint">Ctrl+K</span>
+                                        </div>
+                                        
+                                        <div class="dropdown_divider"/>
+                                        
                                         <div class="dropdown_item" t-on-click.stop="openUserPreferences">
                                             <span class="dropdown_icon">⚙️</span>
                                             <span>Preferences</span>
@@ -131,6 +237,11 @@
                                             <span class="dropdown_icon">👤</span>
                                             <span>My Profile</span>
                                         </div>
+                                        <div class="dropdown_item" t-on-click.stop="openOdooAccount">
+                                            <span class="dropdown_icon">🌐</span>
+                                            <span>My Odoo.com account</span>
+                                        </div>
+                                        
                                         <t t-if="state.companies.length > 1">
                                             <div class="dropdown_divider"/>
                                             <div class="dropdown_section_title">Switch Company</div>
