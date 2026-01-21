@@ -185,6 +185,48 @@ export class ZohoDashboard extends Component {
     }
 
     /**
+     * Filter and normalize view types to only supported ones
+     * @param {Array} viewModes - Array of view mode strings
+     * @param {Array} availableViews - Array of [viewId, viewType] pairs from action
+     * @returns {Object} - {viewType: string, availableTypes: Array}
+     */
+    filterSupportedViewTypes(viewModes, availableViews = []) {
+        const supportedViewTypes = ["list", "kanban", "form", "calendar", "pivot", "graph", "activity"];
+        const unsupportedTypes = ["hierarchy", "tree"]; // tree will be normalized to list
+        
+        // Normalize and filter view modes
+        let normalizedModes = viewModes
+            .map(v => v === "tree" ? "list" : v)
+            .filter(v => supportedViewTypes.includes(v) && !unsupportedTypes.includes(v));
+        
+        // Get available types from views array
+        let availableTypes = availableViews
+            .map(v => v[1] === "tree" ? "list" : v[1])
+            .filter(v => supportedViewTypes.includes(v) && !unsupportedTypes.includes(v));
+        
+        // If no available types, use normalized modes
+        if (availableTypes.length === 0) {
+            availableTypes = normalizedModes.length > 0 ? normalizedModes : ["list"];
+        }
+        
+        // Select the best view type
+        let viewType = normalizedModes.find(v => availableTypes.includes(v));
+        
+        if (!viewType) {
+            // Fallback priority
+            if (availableTypes.includes("list")) viewType = "list";
+            else if (availableTypes.includes("kanban")) viewType = "kanban";
+            else if (availableTypes.includes("form")) viewType = "form";
+            else viewType = availableTypes[0] || "list";
+        }
+        
+        return {
+            viewType: viewType,
+            availableTypes: availableTypes
+        };
+    }
+
+    /**
      * Patch the action service restore method to handle back navigation
      */
     patchActionRestore() {
@@ -224,7 +266,7 @@ export class ZohoDashboard extends Component {
                 try {
                     const numericId = self.extractActionId(actionRequest);
                     if (numericId) {
-                        console.log("📍 Loading action by ID in embedded mode:", numericId);
+                        console.log("🔢 Loading action by ID in embedded mode:", numericId);
                         // Prevent full page navigation - load in embedded mode
                         return await self.loadActionById(numericId);
                     }
@@ -232,7 +274,7 @@ export class ZohoDashboard extends Component {
                     if (typeof actionRequest === "string" && actionRequest.includes('.')) {
                         const resolvedId = await self.resolveXmlIdToActionId(actionRequest);
                         if (resolvedId) {
-                            console.log("📍 Resolved XML ID to action:", actionRequest, "->", resolvedId);
+                            console.log("🔢 Resolved XML ID to action:", actionRequest, "->", resolvedId);
                             return await self.loadActionById(resolvedId);
                         }
                     }
@@ -247,7 +289,7 @@ export class ZohoDashboard extends Component {
             if (actionRequest?.type === "ir.actions.act_window") {
                 // Dialogs should use original behavior
                 if (options.target === "new" || actionRequest.target === "new") {
-                    console.log("📝 Opening dialog (target=new)");
+                    console.log("🔢 Opening dialog (target=new)");
                     return originalDoAction(actionRequest, options);
                 }
 
@@ -326,28 +368,74 @@ export class ZohoDashboard extends Component {
         this.embeddedState.isClientAction = false;
         this.state.currentView = "embedded";
 
-        let viewModes = (actionRequest.view_mode || "list").split(",").map(v => v.trim());
-        // Remove 'hierarchy' if not available
+        // AGGRESSIVE FILTERING: Remove banned view types
+        const supportedViewTypes = ["list", "kanban", "form", "calendar", "pivot", "graph", "activity"];
+        const bannedViewTypes = ["hierarchy", "qweb", "search"];
+        
+        // Clean view_mode string
+        let viewModeString = actionRequest.view_mode || "list";
+        bannedViewTypes.forEach(banned => {
+            const regex = new RegExp(`\\b${banned}\\b,?`, 'gi');
+            viewModeString = viewModeString.replace(regex, '');
+        });
+        viewModeString = viewModeString.replace(/,+/g, ',').replace(/^,|,$/g, '').trim();
+        if (!viewModeString) viewModeString = "list";
+        
+        let viewModes = viewModeString.split(",").map(v => v.trim()).filter(v => v);
+        
+        // Normalize and filter
+        viewModes = viewModes
+            .map(v => v === "tree" ? "list" : v)
+            .filter(v => supportedViewTypes.includes(v) && !bannedViewTypes.includes(v));
+        
+        if (viewModes.length === 0) {
+            viewModes = ["list"];
+        }
+        
+        let viewType = viewModes[0];
+
+        // Clean action.views array
         let availableViewTypes = [];
-        if (actionRequest.views) {
-            availableViewTypes = actionRequest.views.map(v => v[1]);
+        if (actionRequest.views && Array.isArray(actionRequest.views)) {
+            const cleanedViews = actionRequest.views.filter(v => {
+                const vType = v[1] === "tree" ? "list" : v[1];
+                return supportedViewTypes.includes(vType) && !bannedViewTypes.includes(vType);
+            });
+            availableViewTypes = cleanedViews
+                .map(v => v[1] === "tree" ? "list" : v[1])
+                .filter(v => supportedViewTypes.includes(v));
         }
-        // If 'hierarchy' is not in availableViewTypes, remove it from viewModes
-        if (!availableViewTypes.includes("hierarchy")) {
-            viewModes = viewModes.filter(v => v !== "hierarchy");
+        
+        if (availableViewTypes.length === 0) {
+            availableViewTypes = viewModes;
         }
-        let viewType = (viewModes[0] || "list").trim();
-        if (viewType === "tree") viewType = "list";
+        
+        // Ensure viewType is safe
+        if (!availableViewTypes.includes(viewType) || bannedViewTypes.includes(viewType)) {
+            if (availableViewTypes.includes("list")) {
+                viewType = "list";
+            } else if (availableViewTypes.includes("kanban")) {
+                viewType = "kanban";
+            } else if (availableViewTypes.includes("form")) {
+                viewType = "form";
+            } else if (availableViewTypes.length > 0) {
+                viewType = availableViewTypes[0];
+            } else {
+                viewType = "list";
+            }
+        }
+        
+        // Final safety check
+        if (bannedViewTypes.includes(viewType)) {
+            viewType = "list";
+        }
 
         // Determine if we have a specific record
         let resId = actionRequest.res_id || false;
         
         // If views include form and we have res_id, prioritize form view
-        if (resId && actionRequest.views) {
-            const formView = actionRequest.views.find(v => v[1] === "form");
-            if (formView) {
-                viewType = "form";
-            }
+        if (resId && availableViewTypes.includes("form")) {
+            viewType = "form";
         }
 
         // Parse domain and context
@@ -368,8 +456,8 @@ export class ZohoDashboard extends Component {
         // Push current state to stack if we have a model loaded and it's different
         const shouldPushStack = this.embeddedState.currentResModel && 
             (this.embeddedState.currentResModel !== actionRequest.res_model ||
-             this.embeddedState.currentResId !== resId);
-             
+            this.embeddedState.currentResId !== resId);
+            
         if (shouldPushStack) {
             this.actionStack.push({
                 resModel: this.embeddedState.currentResModel,
@@ -414,18 +502,22 @@ export class ZohoDashboard extends Component {
         await this.loadViewBundles(actionRequest.res_model, viewType);
         await this.loadAvailableViewTypes(actionRequest.res_model);
 
-        // Adjust view type if not available or is 'hierarchy' but not present
-        if (!this.embeddedState.availableViewTypes.includes(viewType) ||
-            (viewType === "hierarchy" && !this.embeddedState.availableViewTypes.includes("hierarchy"))) {
-            // Prefer list, then form, then any available
+        // Final validation: ensure viewType is available
+        if (!this.embeddedState.availableViewTypes.includes(viewType)) {
+            // Fallback logic
             if (this.embeddedState.availableViewTypes.includes("list")) {
                 viewType = "list";
+            } else if (this.embeddedState.availableViewTypes.includes("kanban")) {
+                viewType = "kanban";
             } else if (this.embeddedState.availableViewTypes.includes("form")) {
                 viewType = "form";
             } else if (this.embeddedState.availableViewTypes.length > 0) {
                 viewType = this.embeddedState.availableViewTypes[0];
             } else {
-                viewType = "list";
+                // Last resort: use native Odoo action
+                console.warn("⚠️ No suitable view type found, falling back to native action");
+                this.embeddedState.loading = false;
+                return this._originalDoAction(actionRequest, options);
             }
             this.embeddedState.currentViewType = viewType;
         }
@@ -3509,6 +3601,12 @@ export class ZohoDashboard extends Component {
                 if (actionData && actionData.length) {
                     const action = actionData[0];
                     
+                    console.log("📋 Raw action data:", {
+                        view_mode: action.view_mode,
+                        views: action.views,
+                        res_model: action.res_model
+                    });
+                    
                     // Check if it should open as dialog
                     if (action.target === "new") {
                         // Pop the saved state since we're not actually navigating
@@ -3522,18 +3620,130 @@ export class ZohoDashboard extends Component {
                         }, { target: "new" });
                     }
 
+                    // LAYER 1: Define what we support and what we don't
+                    const supportedViewTypes = ["list", "kanban", "form", "calendar", "pivot", "graph", "activity"];
+                    const bannedViewTypes = ["hierarchy", "qweb", "search"];
+                    
+                    // LAYER 2: Clean view_mode string - remove banned types immediately
+                    let viewModeString = action.view_mode || "list";
+                    bannedViewTypes.forEach(banned => {
+                        const regex = new RegExp(`\\b${banned}\\b,?`, 'gi');
+                        viewModeString = viewModeString.replace(regex, '');
+                    });
+                    // Clean up extra commas
+                    viewModeString = viewModeString.replace(/,+/g, ',').replace(/^,|,$/g, '').trim();
+                    if (!viewModeString) viewModeString = "list";
+                    
+                    console.log("🧹 Cleaned view_mode:", viewModeString);
+                    
+                    // Parse cleaned view modes
+                    let viewModes = viewModeString.split(",").map(v => v.trim()).filter(v => v);
+                    
+                    // LAYER 3: Normalize tree to list and filter
+                    viewModes = viewModes
+                        .map(v => v === "tree" ? "list" : v)
+                        .filter(v => supportedViewTypes.includes(v) && !bannedViewTypes.includes(v));
+                    
+                    // LAYER 4: Clean action.views array - remove banned view types
+                    let actionViews = [];
+                    if (Array.isArray(action.views)) {
+                        actionViews = action.views.filter(v => {
+                            const viewType = v[1] === "tree" ? "list" : v[1];
+                            return supportedViewTypes.includes(viewType) && !bannedViewTypes.includes(viewType);
+                        });
+                    }
+                    
+                    // Extract available view types from cleaned action.views
+                    let availableViewTypes = actionViews
+                        .map(v => v[1] === "tree" ? "list" : v[1])
+                        .filter(v => supportedViewTypes.includes(v));
+                    
+                    console.log("✅ Filtered views:", {
+                        viewModes,
+                        actionViews: actionViews.map(v => v[1]),
+                        availableViewTypes
+                    });
+                    
+                    // LAYER 5: If no available views, fetch from database
+                    if (availableViewTypes.length === 0) {
+                        console.log("📋 No valid views in action, fetching from database...");
+                        try {
+                            const dbViews = await this.orm.searchRead(
+                                "ir.ui.view",
+                                [
+                                    ["model", "=", action.res_model],
+                                    ["type", "in", supportedViewTypes],
+                                    ["type", "not in", bannedViewTypes]
+                                ],
+                                ["type"],
+                                { limit: 50 }
+                            );
+                            
+                            availableViewTypes = [...new Set(dbViews.map(v => 
+                                v.type === "tree" ? "list" : v.type
+                            ))].filter(v => supportedViewTypes.includes(v) && !bannedViewTypes.includes(v));
+                            
+                            console.log("✅ Found views in database:", availableViewTypes);
+                        } catch (e) {
+                            console.warn("Could not fetch views from database:", e);
+                        }
+                    }
+                    
+                    // LAYER 6: If still no views, use safe defaults
+                    if (availableViewTypes.length === 0) {
+                        console.log("⚠️ No views found, using safe defaults");
+                        availableViewTypes = ["list", "form"];
+                    }
+                    
+                    // LAYER 7: Select the best view type with multiple fallbacks
+                    let viewType = null;
+                    
+                    // Try 1: First view mode that's available
+                    for (const mode of viewModes) {
+                        if (availableViewTypes.includes(mode) && !bannedViewTypes.includes(mode)) {
+                            viewType = mode;
+                            console.log("✅ Selected from viewModes:", viewType);
+                            break;
+                        }
+                    }
+                    
+                    // Try 2: If res_id is specified, prefer form view
+                    if (!viewType && action.res_id && availableViewTypes.includes("form")) {
+                        viewType = "form";
+                        console.log("✅ Selected form view (res_id present)");
+                    }
+                    
+                    // Try 3: Fallback to preferred order
+                    if (!viewType) {
+                        const fallbackOrder = ["list", "kanban", "form", "calendar", "graph", "pivot", "activity"];
+                        for (const fallback of fallbackOrder) {
+                            if (availableViewTypes.includes(fallback) && !bannedViewTypes.includes(fallback)) {
+                                viewType = fallback;
+                                console.log("✅ Selected from fallback order:", viewType);
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // Try 4: First available view
+                    if (!viewType && availableViewTypes.length > 0) {
+                        viewType = availableViewTypes[0];
+                        console.log("✅ Selected first available:", viewType);
+                    }
+                    
+                    // Try 5: Ultimate fallback
+                    if (!viewType || bannedViewTypes.includes(viewType)) {
+                        viewType = "list";
+                        console.log("⚠️ Using ultimate fallback: list");
+                    }
 
-                    let viewModes = (action.view_mode || "list").split(",").map(v => v.trim());
-                    // Remove 'hierarchy' if not available
-                    let availableViewTypes = [];
-                    if (action.views) {
-                        availableViewTypes = action.views.map(v => v[1]);
+                    console.log("🎯 Final view type:", viewType);
+
+                    // LAYER 8: Final safety check
+                    if (bannedViewTypes.includes(viewType)) {
+                        console.error("❌ Banned view type detected:", viewType);
+                        viewType = "list";
                     }
-                    if (!availableViewTypes.includes("hierarchy")) {
-                        viewModes = viewModes.filter(v => v !== "hierarchy");
-                    }
-                    let viewType = (viewModes[0] || "list").trim();
-                    if (viewType === "tree") viewType = "list";
 
                     const domain = this.parseDomainSafe(action.domain);
                     const context = this.parseContextSafe(action.context);
@@ -3546,14 +3756,13 @@ export class ZohoDashboard extends Component {
                     this.embeddedState.currentActionId = numericId;
                     this.embeddedState.isClientAction = false;
                     
-                    // Store the views from the action (list of [viewId, viewType] pairs)
-                    this.embeddedState.currentViews = action.views || [];
+                    // Store cleaned views
+                    this.embeddedState.currentViews = actionViews;
+                    this.embeddedState.availableViewTypes = availableViewTypes;
 
                     if (action.name) {
                         this.embeddedState.viewTitle = action.name;
-                        // Update breadcrumbs
                         const currentBreadcrumbs = [...this.embeddedState.breadcrumbs];
-                        // Only add if it's different from the last breadcrumb
                         const lastCrumb = currentBreadcrumbs[currentBreadcrumbs.length - 1];
                         if (!lastCrumb || lastCrumb.name !== action.name) {
                             currentBreadcrumbs.push({
@@ -3569,23 +3778,6 @@ export class ZohoDashboard extends Component {
 
                     // Load bundles for the view type
                     await this.loadViewBundles(action.res_model, viewType);
-                    await this.loadAvailableViewTypes(action.res_model);
-
-                    // Adjust view type if not available or is 'hierarchy' but not present
-                    if (!this.embeddedState.availableViewTypes.includes(viewType) ||
-                        (viewType === "hierarchy" && !this.embeddedState.availableViewTypes.includes("hierarchy"))) {
-                        // Prefer list, then form, then any available
-                        if (this.embeddedState.availableViewTypes.includes("list")) {
-                            viewType = "list";
-                        } else if (this.embeddedState.availableViewTypes.includes("form")) {
-                            viewType = "form";
-                        } else if (this.embeddedState.availableViewTypes.length > 0) {
-                            viewType = this.embeddedState.availableViewTypes[0];
-                        } else {
-                            viewType = "list";
-                        }
-                        this.embeddedState.currentViewType = viewType;
-                    }
 
                     // For calendar view, use special loading method
                     if (viewType === "calendar") {
@@ -3605,7 +3797,6 @@ export class ZohoDashboard extends Component {
                     { fields: ["url", "target"] }
                 );
                 if (urlAction) {
-                    // Pop the saved state since we're not actually navigating in SPA
                     if (this.actionStack.length > 0) {
                         this.actionStack.pop();
                     }
@@ -3621,7 +3812,6 @@ export class ZohoDashboard extends Component {
             } else if (actionType === "ir.actions.server") {
                 await this.executeServerAction(numericId);
             } else if (actionType === "ir.actions.report") {
-                // Pop the saved state
                 if (this.actionStack.length > 0) {
                     this.actionStack.pop();
                 }
