@@ -553,15 +553,15 @@
                                                     <div class="sc_value" t-esc="state.employee?.emp_timesheets or 0"/>
                                                     <div class="sc_label">Timesheets</div>
                                                 </div>
-                                                <div class="stat_card" t-on-click="openContracts">
-                                                    <div class="sc_icon">📄</div>
-                                                    <div class="sc_value" t-esc="state.employee?.contracts_count or 0"/>
-                                                    <div class="sc_label">Contracts</div>
+                                                <div class="stat_card" t-on-click="openDocuments">
+                                                    <div class="sc_icon">📎</div>
+                                                    <div class="sc_value" t-esc="state.documents_count or 0"/>
+                                                    <div class="sc_label">Documents</div>
                                                 </div>
-                                                <div class="stat_card">
-                                                    <div class="sc_icon">📊</div>
-                                                    <div class="sc_value" t-esc="state.employee?.broad_factor or 0"/>
-                                                    <div class="sc_label">Broad Factor</div>
+                                                <div class="stat_card" t-on-click="openAnnouncements">
+                                                    <div class="sc_icon">📢</div>
+                                                    <div class="sc_value" t-esc="state.announcements_count or 0"/>
+                                                    <div class="sc_label">Announcements</div>
                                                 </div>
                                             </div>
 

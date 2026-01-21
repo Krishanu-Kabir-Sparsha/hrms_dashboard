@@ -82,6 +82,8 @@ export class ZohoDashboard extends Component {
             birthdays: [],
             events: [],
             announcements: [],
+            documents_count: 0,
+            announcements_count: 0,
             apps: [],
             searchQuery: "",
             timerSeconds: 0,
@@ -114,7 +116,7 @@ export class ZohoDashboard extends Component {
             { id: "profile", icon: "👤", label: "Profile", action: "profile" },
             { id: "leave", icon: "📅", label: "Leave", model: "hr.leave", title: "Time Off" },
             { id: "attendance", icon: "⏰", label: "Attendance", model: "hr.attendance", title: "My Attendance" },
-            { id: "timesheet", icon: "⏱️", label: "Timesheets", model: "account.analytic.line", title: "My Timesheets" },
+            { id: "timesheet", icon: "⏱️", label: "Timesheets", model: "timesheet.report", title: "Time Log Summary" },
             { id: "payroll", icon: "💰", label: "Payroll", model: "hr.payslip", title: "My Payslips" },
             { id: "expense", icon: "💳", label: "Expenses", model: "hr.expense", title: "My Expenses" },
             // Task Management items with proper action references
@@ -4472,6 +4474,8 @@ export class ZohoDashboard extends Component {
                         payslip_count: 0,
                         emp_timesheets: 0,
                         contracts_count: 0,
+                        documents_count: 0,
+                        announcements_count: 0,
                         broad_factor: 0,
                         leaves_to_approve: 0,
                         leaves_today: 0,
@@ -4479,6 +4483,25 @@ export class ZohoDashboard extends Component {
                         leaves_alloc_req: 0,
                         job_applications: 0,
                     };
+                }
+                // Fetch document templates count (for Document Templates menu)
+                try {
+                    const docCount = await this.orm.call("hr.document.template", "search_count", []);
+                    this.state.documents_count = docCount;
+                } catch (e) {
+                    this.state.documents_count = 0;
+                }
+                // Fetch announcements count
+                try {
+                    const today = new Date().toISOString().split("T")[0];
+                    const annCount = await this.orm.call("hr.announcement", "search_count", [[
+                        ["state", "=", "approved"],
+                        ["date_start", "<=", today],
+                        "|", ["date_end", ">=", today], ["date_end", "=", false]
+                    ]]);
+                    this.state.announcements_count = annCount;
+                } catch (e) {
+                    this.state.announcements_count = 0;
                 }
             } catch (e) {
                 console.error("Failed to load employee details:", e);
@@ -4488,6 +4511,8 @@ export class ZohoDashboard extends Component {
                     name: 'User',
                     attendance_state: 'checked_out',
                 };
+                this.state.documents_count = 0;
+                this.state.announcements_count = 0;
             }
 
             try {
@@ -5383,7 +5408,7 @@ export class ZohoDashboard extends Component {
             await this.actionService.doAction({
                 type: "ir.actions.act_window",
                 name: _t("New Task"),
-                res_model: "project.task",
+                res_model: "task.management",
                 views: [[false, "form"]],
                 target: "new",
                 context: {},
@@ -5406,13 +5431,19 @@ export class ZohoDashboard extends Component {
     }
 
     openTimesheets() {
-        this.loadEmbeddedView("account.analytic.line", "My Timesheets",
-            [["project_id", "!=", false]]);
+        // Open Time Log Summary from Task Management (timesheet.report)
+        this.loadEmbeddedView("timesheet.report", "Time Log Summary", []);
     }
 
-    openContracts() {
-        this.loadEmbeddedView("hr.contract", "My Contracts",
-            this.state.employee?.id ? [["employee_id", "=", this.state.employee.id]] : []);
+    // Replaces Contracts card: now Documents
+    openDocuments() {
+        // Open the same Documents page as Employees > Documents menu (action ID 346)
+        this.loadActionById(346);
+    }
+
+    // Replaces Broad Factor card: now Announcements
+    openAnnouncements() {
+        this.loadEmbeddedView("hr.announcement", "Announcements", []);
     }
 
     openLeaveRequests() {
