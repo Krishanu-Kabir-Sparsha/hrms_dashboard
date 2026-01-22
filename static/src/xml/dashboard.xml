@@ -436,20 +436,16 @@
                                             <t t-else="">CHECK-IN</t>
                                         </button>
 
-                                        <div class="quick_stats">
-                                            <div class="quick_stat" t-on-click="openPayslips">
-                                                <span class="qs_value" t-esc="state.employee?.payslip_count or 0"/>
-                                                <span class="qs_label">Payslips</span>
+                                            <div class="quick_stats">
+                                                <div class="quick_stat" t-on-click="openPayslips">
+                                                    <span class="qs_value"><t t-esc="state.employee?.payslip_count || 0"/></span>
+                                                    <span class="qs_label">Payslips</span>
+                                                </div>
+                                                <div class="quick_stat" t-on-click="openTimesheets">
+                                                    <span class="qs_value"><t t-esc="state.employee?.timesheet_count || 0"/></span>
+                                                    <span class="qs_label">Timesheets</span>
+                                                </div>
                                             </div>
-                                            <div class="quick_stat" t-on-click="openTimesheets">
-                                                <span class="qs_value" t-esc="state.employee?.emp_timesheets or 0"/>
-                                                <span class="qs_label">Timesheets</span>
-                                            </div>
-                                            <div class="quick_stat" t-on-click="openContracts">
-                                                <span class="qs_value" t-esc="state.employee?.contracts_count or 0"/>
-                                                <span class="qs_label">Contracts</span>
-                                            </div>
-                                        </div>
 
                                         <t t-if="state.leaveBalances.length">
                                             <div class="leave_balance_section">
@@ -545,22 +541,22 @@
                                             <div class="stats_grid">
                                                 <div class="stat_card" t-on-click="openPayslips">
                                                     <div class="sc_icon">💰</div>
-                                                    <div class="sc_value" t-esc="state.employee?.payslip_count or 0"/>
+                                                    <div class="sc_value"><t t-esc="state.employee?.payslip_count || 0"/></div>
                                                     <div class="sc_label">Payslips</div>
                                                 </div>
                                                 <div class="stat_card" t-on-click="openTimesheets">
                                                     <div class="sc_icon">⏱️</div>
-                                                    <div class="sc_value" t-esc="state.employee?.emp_timesheets or 0"/>
+                                                    <div class="sc_value"><t t-esc="state.employee?.timesheet_count || 0"/></div>
                                                     <div class="sc_label">Timesheets</div>
                                                 </div>
                                                 <div class="stat_card" t-on-click="openDocuments">
-                                                    <div class="sc_icon">📎</div>
-                                                    <div class="sc_value" t-esc="state.documents_count or 0"/>
+                                                    <div class="sc_icon">📄</div>
+                                                    <div class="sc_value"><t t-esc="state.employee?.documents_count || 0"/></div>
                                                     <div class="sc_label">Documents</div>
                                                 </div>
                                                 <div class="stat_card" t-on-click="openAnnouncements">
                                                     <div class="sc_icon">📢</div>
-                                                    <div class="sc_value" t-esc="state.announcements_count or 0"/>
+                                                    <div class="sc_value"><t t-esc="state.employee?.announcements_count || 0"/></div>
                                                     <div class="sc_label">Announcements</div>
                                                 </div>
                                             </div>

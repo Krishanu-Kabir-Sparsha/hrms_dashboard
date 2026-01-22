@@ -4446,7 +4446,9 @@ export class ZohoDashboard extends Component {
     }
 
     async loadInitialData() {
+
         try {
+            // 1. Check if user is manager
             try {
                 this.state.isManager = await this.orm.call("hr.employee", "check_user_group", []);
             } catch (e) {
@@ -4454,15 +4456,26 @@ export class ZohoDashboard extends Component {
                 this.state.isManager = false;
             }
 
+            // 2. Get employee details
+            let employeeId = false;
             try {
                 const empDetails = await this.orm.call("hr.employee", "get_user_employee_details", []);
-                if (empDetails && empDetails[0] && empDetails[0].name) {
-                    this.state.employee = empDetails[0];
+                console.log("[DASHBOARD] Received employee details from backend:", empDetails);
+                if (empDetails && empDetails[0] && empDetails[0].id) {
+                    // Always ensure employee is an object and preserve card counts if already set
+                    this.state.employee = Object.assign({
+                        payslip_count: 0,
+                        emp_timesheets: 0,
+                        contracts_count: 0,
+                        documents_count: 0,
+                        announcements_count: 0,
+                    }, empDetails[0]);
+                    console.log("[DASHBOARD] Mapped state.employee:", this.state.employee);
+                    employeeId = empDetails[0].id;
                     this.state.attendance = empDetails[0].attendance_lines || [];
                     this.state.leaves = empDetails[0].leave_lines || [];
                     this.state.expenses = empDetails[0].expense_lines || [];
                 } else {
-                    // Set default employee object to prevent template errors
                     this.state.employee = {
                         id: false,
                         name: 'User',
@@ -4484,36 +4497,132 @@ export class ZohoDashboard extends Component {
                         job_applications: 0,
                     };
                 }
-                // Fetch document templates count (for Document Templates menu)
-                try {
-                    const docCount = await this.orm.call("hr.document.template", "search_count", []);
-                    this.state.documents_count = docCount;
-                } catch (e) {
-                    this.state.documents_count = 0;
-                }
-                // Fetch announcements count
-                try {
-                    const today = new Date().toISOString().split("T")[0];
-                    const annCount = await this.orm.call("hr.announcement", "search_count", [[
-                        ["state", "=", "approved"],
-                        ["date_start", "<=", today],
-                        "|", ["date_end", ">=", today], ["date_end", "=", false]
-                    ]]);
-                    this.state.announcements_count = annCount;
-                } catch (e) {
-                    this.state.announcements_count = 0;
-                }
             } catch (e) {
                 console.error("Failed to load employee details:", e);
-                // Set default employee object
                 this.state.employee = {
                     id: false,
                     name: 'User',
                     attendance_state: 'checked_out',
+                    payslip_count: 0,
+                    emp_timesheets: 0,
+                    contracts_count: 0,
+                    documents_count: 0,
+                    announcements_count: 0,
                 };
-                this.state.documents_count = 0;
-                this.state.announcements_count = 0;
             }
+
+
+            // 3. Fetch card counts directly from the actual list views' models
+            // Timesheets: Task Management > task.timesheet.line (uses user_id, not employee_id)
+            let timesheetCount = 0;
+            try {
+                let timesheetDomain = [];
+                if (this.state.employee && this.state.employee.user_id) {
+                    // task.timesheet.line uses user_id field, not employee_id
+                    const userId = Array.isArray(this.state.employee.user_id) 
+                        ? this.state.employee.user_id[0] 
+                        : this.state.employee.user_id;
+                    if (userId) {
+                        timesheetDomain = [["user_id", "=", userId]];
+                    }
+                }
+                if (timesheetDomain.length > 0) {
+                    timesheetCount = await this.orm.searchCount("task.timesheet.line", timesheetDomain);
+                    console.log("[DASHBOARD] Timesheet count:", timesheetCount, "domain:", timesheetDomain);
+                } else {
+                    console.warn("[DASHBOARD] No user_id found for employee, skipping timesheet count");
+                }
+            } catch (e) {
+                console.error("[DASHBOARD] Error fetching timesheet count:", e);
+                timesheetCount = 0;
+            }
+
+            // Payslips: Payroll > Employee Payslips (hr.payslip)
+            let payslipCount = 0;
+            try {
+                let payslipDomain = [];
+                if (this.state.employee && this.state.employee.id) {
+                    payslipDomain = [["employee_id", "=", this.state.employee.id]];
+                }
+                payslipCount = await this.orm.searchCount("hr.payslip", payslipDomain);
+                console.log("[DASHBOARD] Payslip count:", payslipCount, "domain:", payslipDomain);
+            } catch (e) {
+                console.error("[DASHBOARD] Error fetching payslip count:", e);
+                payslipCount = 0;
+            }
+
+            // Documents: Employees > Documents (hr.employee.document with fallback to ir.attachment)
+            let docCount = 0;
+            try {
+                let docDomain = [];
+                if (this.state.employee && this.state.employee.id) {
+                    docDomain = [["employee_id", "=", this.state.employee.id]];
+                }
+                // Try hr.employee.document first
+                try {
+                    docCount = await this.orm.searchCount("hr.employee.document", docDomain);
+                    console.log("[DASHBOARD] Document count from hr.employee.document:", docCount);
+                } catch (e1) {
+                    console.warn("[DASHBOARD] hr.employee.document not available, trying ir.attachment:", e1.message);
+                    // Fallback: try ir.attachment filtered by res_model and res_id
+                    if (this.state.employee && this.state.employee.id) {
+                        try {
+                            docCount = await this.orm.searchCount("ir.attachment", [
+                                ["res_model", "=", "hr.employee"],
+                                ["res_id", "=", this.state.employee.id]
+                            ]);
+                            console.log("[DASHBOARD] Document count from ir.attachment:", docCount);
+                        } catch (e2) {
+                            console.error("[DASHBOARD] Error fetching document count from ir.attachment:", e2);
+                            docCount = 0;
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error("[DASHBOARD] Error fetching document count:", e);
+                docCount = 0;
+            }
+
+            // Announcements: Announcements (hr.announcement)
+            let annCount = 0;
+            try {
+                const today = new Date().toISOString().split("T")[0];
+                const annDomain = [
+                    ["state", "=", "approved"],
+                    ["date_start", "<=", today],
+                    "|", ["date_end", ">=", today], ["date_end", "=", false]
+                ];
+                annCount = await this.orm.searchCount("hr.announcement", annDomain);
+                console.log("[DASHBOARD] Announcement count:", annCount, "domain:", annDomain);
+            } catch (e) {
+                console.error("[DASHBOARD] Error fetching announcement count:", e);
+                // If hr.announcement doesn't exist, try without date filters
+                try {
+                    annCount = await this.orm.searchCount("hr.announcement", [["state", "=", "approved"]]);
+                    console.log("[DASHBOARD] Announcement count (simplified domain):", annCount);
+                } catch (e2) {
+                    console.error("[DASHBOARD] Error fetching announcement count (fallback):", e2);
+                    annCount = 0;
+                }
+            }
+
+            // Update all counts reactively in one go (all on employee)
+            // Use spread operator to create new object reference for Owl reactivity
+            this.state.employee = {
+                ...this.state.employee,
+                timesheet_count: timesheetCount,
+                payslip_count: payslipCount,
+                documents_count: docCount,
+                announcements_count: annCount,
+            };
+            console.log("[DASHBOARD] Updated employee counts:", {
+                timesheet_count: timesheetCount,
+                payslip_count: payslipCount,
+                documents_count: docCount,
+                announcements_count: annCount,
+            });
+
+            // ...existing code...
 
             try {
                 const projects = await this.orm.call("hr.employee", "get_employee_project_tasks", []);
@@ -5436,9 +5545,35 @@ export class ZohoDashboard extends Component {
     }
 
     // Replaces Contracts card: now Documents
-    openDocuments() {
-        // Open the same Documents page as Employees > Documents menu (action ID 346)
-        this.loadActionById(346);
+    async openDocuments() {
+        // Dynamically resolve the correct action for the Documents menu by name
+        try {
+            // Find the menu with name 'Documents'
+            const menus = await this.orm.searchRead(
+                "ir.ui.menu",
+                [["name", "=", "Documents"]],
+                ["action"],
+                { limit: 1 }
+            );
+            if (menus && menus.length && menus[0].action) {
+                // action is in the form 'ir.actions.act_window,205'
+                const actionRef = menus[0].action;
+                const actionId = parseInt(actionRef.split(",")[1], 10);
+                if (actionId) {
+                    await this.loadActionById(actionId);
+                    return;
+                }
+            }
+            // Fallback: try to resolve by action name/model
+            const fallbackId = await this.resolveActionByNameOrModel("Documents", "hr.employee.document");
+            if (fallbackId) {
+                await this.loadActionById(fallbackId);
+                return;
+            }
+            this.notification.add(_t("Could not find the Documents menu action."), { type: "danger" });
+        } catch (e) {
+            this.notification.add(_t("Error opening Documents menu: ") + e, { type: "danger" });
+        }
     }
 
     // Replaces Broad Factor card: now Announcements

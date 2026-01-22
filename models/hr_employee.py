@@ -80,6 +80,9 @@ class HrEmployee(models.Model):
                 'attendance_state': 'checked_out',
                 'experience': '-',
                 'payslip_count': 0,
+                'timesheet_count': 0,
+                'documents_count': 0,
+                'announcements_count': 0,
                 'contracts_count': 0,
                 'emp_timesheets': 0,
                 'broad_factor': 0,
@@ -106,10 +109,12 @@ class HrEmployee(models.Model):
             # Calculate experience
             experience = self._calculate_experience(employee)
 
-            # Get various counts
+            # Get various counts - UPDATED to use correct models
             payslip_count = self._get_payslip_count(employee)
-            contracts_count = self._get_contracts_count(employee)
-            emp_timesheets = self._get_timesheet_count(employee)
+            timesheet_count = self._get_timesheet_report_count(employee)  # NEW: from timesheet.report
+            documents_count = self._get_documents_count(employee)  # NEW: from hr.employee.document
+            announcements_count = self._get_announcements_count()  # NEW: from hr.announcement
+            emp_timesheets = self._get_timesheet_count(employee)  # Keep for backward compatibility
             
             # Manager specific counts
             leaves_to_approve = self._get_leaves_to_approve()
@@ -118,7 +123,7 @@ class HrEmployee(models.Model):
             leaves_alloc_req = self._get_allocation_requests()
             job_applications = self._get_job_applications()
 
-            return [{
+            result = [{
                 'id': employee.id,
                 'user_id': self.env.user.id,
                 'name': employee.name or 'User',
@@ -133,7 +138,9 @@ class HrEmployee(models.Model):
                 'attendance_state': employee.attendance_state or 'checked_out',
                 'experience': experience,
                 'payslip_count': payslip_count,
-                'contracts_count': contracts_count,
+                'timesheet_count': timesheet_count,  # NEW: timesheet.report count
+                'documents_count': documents_count,  # NEW: hr.employee.document count
+                'announcements_count': announcements_count,  # NEW: hr.announcement count
                 'emp_timesheets': emp_timesheets,
                 'broad_factor': 0,
                 'leaves_to_approve': leaves_to_approve,
@@ -145,6 +152,14 @@ class HrEmployee(models.Model):
                 'leave_lines': leave_lines,
                 'expense_lines': expense_lines,
             }]
+            # Debug log for dashboard counts
+            _logger = getattr(self, '_logger', None)
+            if not _logger:
+                import logging
+                _logger = logging.getLogger(__name__)
+            _logger.info('DASHBOARD COUNTS for user %s: payslip=%s, timesheet=%s, emp_timesheets=%s, documents=%s, announcements=%s',
+                self.env.user.login, payslip_count, timesheet_count, emp_timesheets, documents_count, announcements_count)
+            return result
         except Exception as e:
             return [{'name': 'User', 'error': str(e)}]
 
@@ -168,12 +183,12 @@ class HrEmployee(models.Model):
                     'worked_hours': '{:.2f}'.format(att.worked_hours) if att.worked_hours else '0.00',
                 })
             return lines
-        except Exception:
+        except Exception: 
             return []
 
     def _get_leave_lines(self, employee):
         """Get recent leave records"""
-        try:
+        try: 
             leaves = self.env['hr.leave'].sudo().search([
                 ('employee_id', '=', employee.id)
             ], order='date_from desc', limit=10)
@@ -250,11 +265,52 @@ class HrEmployee(models.Model):
             return '-'
 
     def _get_payslip_count(self, employee):
+        """Get payslip count from hr.payslip (hr_payroll_community)"""
         try:
             return self.env['hr.payslip'].sudo().search_count([
                 ('employee_id', '=', employee.id)
             ])
         except Exception: 
+            return 0
+
+    def _get_timesheet_report_count(self, employee):
+        """Get timesheet count from timesheet.report (task_management Time Log Summary)"""
+        try:
+            # Check if model exists in registry
+            if 'timesheet.report' in self.env: 
+                return self.env['timesheet.report'].sudo().search_count([
+                    ('employee_id', '=', employee.id)
+                ])
+            return 0
+        except Exception as e:
+            print(f"Error getting timesheet count: {e}")
+            return 0
+
+    def _get_documents_count(self, employee):
+        """Get documents count from hr.employee.document, filtered by employee"""
+        try:
+            if 'hr.employee.document' in self.env:
+                return self.env['hr.employee.document'].sudo().search_count([
+                    ('employee_id', '=', employee.id)
+                ])
+            return 0
+        except Exception as e:
+            print(f"Error getting documents count: {e}")
+            return 0
+
+    def _get_announcements_count(self):
+        """Get announcements count from hr.announcement (hr_reward_warning), filtered by date and state"""
+        try:
+            if 'hr.announcement' in self.env:
+                today = date.today().strftime('%Y-%m-%d')
+                return self.env['hr.announcement'].sudo().search_count([
+                    ('state', '=', 'approved'),
+                    ('date_start', '<=', today),
+                    '|', ('date_end', '>=', today), ('date_end', '=', False)
+                ])
+            return 0
+        except Exception as e:
+            print(f"Error getting announcements count: {e}")
             return 0
 
     def _get_contracts_count(self, employee):
@@ -266,7 +322,8 @@ class HrEmployee(models.Model):
             return 0
 
     def _get_timesheet_count(self, employee):
-        try:
+        """Legacy method - kept for backward compatibility"""
+        try: 
             return self.env['account.analytic.line'].sudo().search_count([
                 ('employee_id', '=', employee.id),
                 ('project_id', '!=', False)
@@ -318,13 +375,13 @@ class HrEmployee(models.Model):
     def _get_job_applications(self):
         try:
             return self.env['hr.applicant'].sudo().search_count([])
-        except Exception:
+        except Exception: 
             return 0
 
     @api.model
     def get_employee_project_tasks(self):
         """Get employee's project tasks"""
-        try:
+        try: 
             tasks = self.env['project.task'].sudo().search([
                 '|',
                 ('user_ids', 'in', [self.env.user.id]),
