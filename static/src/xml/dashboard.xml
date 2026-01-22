@@ -562,29 +562,42 @@
                                             </div>
 
                                             <div class="info_grid_2x2">
-                                                <div class="info_card">
+                                                <div class="info_card clickable_card" t-on-click="openPersonalInfoPopup">
                                                     <h4>Personal Information</h4>
                                                     <div class="info_grid">
                                                         <div class="info_field">
-                                                            <label>Experience</label>
-                                                            <p t-esc="state.employee?.experience or '-'"/>
+                                                            <label>Role</label>
+                                                            <p t-if="state.employee?.job_id" t-esc="state.employee.job_id[1]"/>
+                                                            <p t-else="">-</p>
                                                         </div>
                                                         <div class="info_field">
                                                             <label>Email</label>
                                                             <p t-esc="state.employee?.work_email or '-'"/>
                                                         </div>
                                                         <div class="info_field">
+                                                            <label>Phone</label>
+                                                            <p t-esc="state.employee?.mobile_phone or '-'"/>
+                                                        </div>
+                                                        <div class="info_field">
                                                             <label>Department</label>
                                                             <p t-if="state.employee?.department_id" t-esc="state.employee.department_id[1]"/>
                                                             <p t-else="">-</p>
                                                         </div>
-                                                        <div class="info_field">
-                                                            <label>Phone</label>
-                                                            <p t-esc="state.employee?.mobile_phone or '-'"/>
-                                                        </div>
                                                     </div>
                                                 </div>
-                                                <div class="skills_card">
+                                                <div class="chart_card clickable_card" t-on-click="openAttendanceTrendPopup">
+                                                    <h4>Attendance Trend</h4>
+                                                    <div class="chart_container">
+                                                        <canvas id="zohoAttendanceChart"/>
+                                                    </div>
+                                                </div>
+                                                <div class="chart_card clickable_card" t-on-click="openLeaveTrendPopup">
+                                                    <h4>Leave Trend</h4>
+                                                    <div class="chart_container">
+                                                        <canvas id="zohoLeaveChart"/>
+                                                    </div>
+                                                </div>
+                                                <div class="skills_card clickable_card" t-on-click="openSkillsPopup">
                                                     <h4>My Skills</h4>
                                                     <div class="skills_list">
                                                         <t t-foreach="state.skills" t-as="skill" t-key="skill.id">
@@ -600,19 +613,117 @@
                                                         </t>
                                                     </div>
                                                 </div>
-                                                <div class="chart_card">
-                                                    <h4>Attendance Trend</h4>
-                                                    <div class="chart_container">
-                                                        <canvas id="zohoAttendanceChart"/>
-                                                    </div>
-                                                </div>
-                                                <div class="chart_card">
-                                                    <h4>Leave Trend</h4>
-                                                    <div class="chart_container">
-                                                        <canvas id="zohoLeaveChart"/>
-                                                    </div>
-                                                </div>
                                             </div>
+
+                                            <!-- Popup Modals -->
+                                            <!-- Personal Information Popup -->
+                                            <t t-if="state.personalInfoPopupOpen">
+                                                <div class="card_popup_overlay" t-on-click="closePersonalInfoPopup">
+                                                    <div class="card_popup_content" t-on-click.stop="">
+                                                        <div class="popup_header">
+                                                            <h3>Personal Information</h3>
+                                                            <button class="popup_close_btn" t-on-click="closePersonalInfoPopup">×</button>
+                                                        </div>
+                                                        <div class="popup_body">
+                                                            <div class="popup_info_grid">
+                                                                <div class="popup_info_field">
+                                                                    <label>Role</label>
+                                                                    <p t-if="state.employee?.job_id" t-esc="state.employee.job_id[1]"/>
+                                                                    <p t-else="">-</p>
+                                                                </div>
+                                                                <div class="popup_info_field">
+                                                                    <label>Email</label>
+                                                                    <p t-esc="state.employee?.work_email or '-'"/>
+                                                                </div>
+                                                                <div class="popup_info_field">
+                                                                    <label>Phone</label>
+                                                                    <p t-esc="state.employee?.mobile_phone or '-'"/>
+                                                                </div>
+                                                                <div class="popup_info_field">
+                                                                    <label>Department</label>
+                                                                    <p t-if="state.employee?.department_id" t-esc="state.employee.department_id[1]"/>
+                                                                    <p t-else="">-</p>
+                                                                </div>
+                                                                <div class="popup_info_field">
+                                                                    <label>Experience</label>
+                                                                    <p t-esc="state.employee?.experience or '-'"/>
+                                                                </div>
+                                                                <div class="popup_info_field">
+                                                                    <label>Company</label>
+                                                                    <p t-if="state.employee?.company_id" t-esc="state.employee.company_id[1]"/>
+                                                                    <p t-else="">-</p>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </t>
+
+                                            <!-- Attendance Trend Popup -->
+                                            <t t-if="state.attendanceTrendPopupOpen">
+                                                <div class="card_popup_overlay" t-on-click="closeAttendanceTrendPopup">
+                                                    <div class="card_popup_content chart_popup" t-on-click.stop="">
+                                                        <div class="popup_header">
+                                                            <h3>Attendance Trend</h3>
+                                                            <button class="popup_close_btn" t-on-click="closeAttendanceTrendPopup">×</button>
+                                                        </div>
+                                                        <div class="popup_body">
+                                                            <div class="popup_chart_container">
+                                                                <canvas id="zohoAttendanceChartPopup"/>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </t>
+
+                                            <!-- Leave Trend Popup -->
+                                            <t t-if="state.leaveTrendPopupOpen">
+                                                <div class="card_popup_overlay" t-on-click="closeLeaveTrendPopup">
+                                                    <div class="card_popup_content chart_popup" t-on-click.stop="">
+                                                        <div class="popup_header">
+                                                            <h3>Leave Trend</h3>
+                                                            <button class="popup_close_btn" t-on-click="closeLeaveTrendPopup">×</button>
+                                                        </div>
+                                                        <div class="popup_body">
+                                                            <div class="popup_chart_container">
+                                                                <canvas id="zohoLeaveChartPopup"/>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </t>
+
+                                            <!-- Skills Popup -->
+                                            <t t-if="state.skillsPopupOpen">
+                                                <div class="card_popup_overlay" t-on-click="closeSkillsPopup">
+                                                    <div class="card_popup_content" t-on-click.stop="">
+                                                        <div class="popup_header">
+                                                            <h3>My Skills</h3>
+                                                            <button class="popup_close_btn" t-on-click="closeSkillsPopup">×</button>
+                                                        </div>
+                                                        <div class="popup_body">
+                                                            <div class="popup_skills_list">
+                                                                <t t-if="state.skills.length">
+                                                                    <t t-foreach="state.skills" t-as="skill" t-key="skill.id">
+                                                                        <div class="popup_skill_row">
+                                                                            <div class="popup_skill_header">
+                                                                                <span t-esc="skill.name"/>
+                                                                                <span><t t-esc="skill.progress"/>%</span>
+                                                                            </div>
+                                                                            <div class="popup_skill_bar">
+                                                                                <div class="popup_skill_fill" t-attf-style="width: {{ skill.progress }}%"/>
+                                                                            </div>
+                                                                        </div>
+                                                                    </t>
+                                                                </t>
+                                                                <t t-else="">
+                                                                    <div class="popup_empty_state">No skills available</div>
+                                                                </t>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </t>
                                         </div>
 
                                         <!-- Attendance Tab -->

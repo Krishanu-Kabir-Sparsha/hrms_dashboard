@@ -454,6 +454,49 @@ class HrEmployee(models.Model):
         return result
 
     @api.model
+    def employee_attendance_trend(self):
+        """Get employee attendance trend for chart"""
+        try:
+            employee = self.env.user.employee_id
+            if not employee: 
+                return []
+
+            today = date.today()
+            result = []
+            
+            # Get last 6 months of attendance data
+            for i in range(5, -1, -1):
+                month_date = today - timedelta(days=i * 30)
+                month_name = month_date.strftime('%b')
+                
+                first_day = month_date.replace(day=1)
+                if month_date.month == 12:
+                    last_day = month_date.replace(day=31)
+                else: 
+                    last_day = (first_day + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+                
+                # Count days with attendance (check_in exists)
+                attendances = self.env['hr.attendance'].sudo().search([
+                    ('employee_id', '=', employee.id),
+                    ('check_in', '>=', first_day.strftime('%Y-%m-%d 00:00:00')),
+                    ('check_in', '<=', last_day.strftime('%Y-%m-%d 23:59:59'))
+                ])
+                
+                # Count unique dates
+                unique_dates = set()
+                for att in attendances:
+                    if att.check_in:
+                        unique_dates.add(att.check_in.date())
+                
+                present_days = len(unique_dates)
+                
+                result.append({'a_month': month_name, 'present_days': present_days})
+            
+            return result
+        except Exception: 
+            return []
+
+    @api.model
     def employee_leave_trend(self):
         """Get employee leave trend for chart"""
         try:

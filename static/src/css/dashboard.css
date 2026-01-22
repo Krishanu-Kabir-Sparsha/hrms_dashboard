@@ -3003,11 +3003,22 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
     margin-bottom: 24px;
 }
 
+/* Info Grid 2x2 */
+.info_grid_2x2 {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
+    margin-bottom: 24px;
+}
+
 .info_card,
 .skills_card {
-    background: var(--bg-hover);
+    background: var(--bg-card);
     padding: 20px;
     border-radius: var(--radius);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-xs);
+    transition: var(--transition);
 }
 
 .info_card h4,
@@ -3016,7 +3027,19 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
     font-size: 15px;
     font-weight: 600;
     margin: 0 0 16px;
-    color: var(--text-dark);
+    color: #1a472a;
+}
+
+/* Clickable Cards */
+.clickable_card {
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.clickable_card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+    border-color: var(--success);
 }
 
 .info_grid {
@@ -3076,14 +3099,204 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
 
 /* Chart Card */
 .chart_card {
-    background: var(--bg-hover);
+    background: var(--bg-card);
     padding: 20px;
     border-radius: var(--radius);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-xs);
+    transition: var(--transition);
 }
 
 .chart_container {
     height: 240px;
     position: relative;
+}
+
+/* ==================== POPUP MODALS ==================== */
+
+.card_popup_overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.card_popup_content {
+    background: var(--bg-card);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    max-width: 800px;
+    width: 100%;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    animation: slideUp 0.3s ease;
+    overflow: hidden;
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(20px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.chart_popup {
+    max-width: 900px;
+}
+
+.popup_header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-card);
+}
+
+.popup_header h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #1a472a;
+}
+
+.popup_close_btn {
+    background: none;
+    border: none;
+    font-size: 28px;
+    color: var(--text-medium);
+    cursor: pointer;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    transition: var(--transition);
+    line-height: 1;
+}
+
+.popup_close_btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-dark);
+}
+
+.popup_body {
+    padding: 24px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.popup_info_grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
+}
+
+.popup_info_field {
+    display: flex;
+    flex-direction: column;
+}
+
+.popup_info_field label {
+    font-size: 11px;
+    color: var(--text-light);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-bottom: 6px;
+    font-weight: 500;
+}
+
+.popup_info_field p {
+    margin: 0;
+    font-weight: 500;
+    color: var(--text-dark);
+    font-size: 14px;
+}
+
+.popup_chart_container {
+    height: 400px;
+    position: relative;
+    width: 100%;
+}
+
+.popup_skills_list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.popup_skill_row {
+    margin-bottom: 12px;
+}
+
+.popup_skill_header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    color: var(--text-medium);
+    margin-bottom: 8px;
+    font-weight: 500;
+}
+
+.popup_skill_bar {
+    height: 8px;
+    background: #e9ecef;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.popup_skill_fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary) 0%, #667eea 100%);
+    border-radius: 4px;
+    transition: width 0.5s ease;
+}
+
+.popup_empty_state {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-light);
+    font-size: 14px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .info_grid_2x2 {
+        grid-template-columns: 1fr;
+    }
+    
+    .popup_info_grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .card_popup_content {
+        max-width: 95%;
+        margin: 10px;
+    }
 }
 
 /* Section Header */

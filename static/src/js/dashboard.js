@@ -112,6 +112,11 @@ export class ZohoDashboard extends Component {
             companies: [],
             currentCompany: null,
             currentUserId: false,
+            // Popup states
+            personalInfoPopupOpen: false,
+            attendanceTrendPopupOpen: false,
+            leaveTrendPopupOpen: false,
+            skillsPopupOpen: false,
         });
 
         // Navigation items - some use action IDs for proper dashboard loading
@@ -5180,7 +5185,7 @@ export class ZohoDashboard extends Component {
             this.attendanceChartInstance = new Chart(ctx, {
                 type: "bar",
                 data: {
-                    labels: this.state.attendanceChartData.map(d => d.date),
+                    labels: this.state.attendanceChartData.map(d => d.a_month || d.date),
                     datasets: [{
                         label: "Attendance",
                         data: this.state.attendanceChartData.map(d => d.present_days),
@@ -5229,6 +5234,130 @@ export class ZohoDashboard extends Component {
             });
         } catch (error) {
             console.error("Failed to render chart:", error);
+        }
+    }
+
+    // ==================== POPUP METHODS ====================
+    
+    openPersonalInfoPopup() {
+        this.state.personalInfoPopupOpen = true;
+    }
+
+    closePersonalInfoPopup() {
+        this.state.personalInfoPopupOpen = false;
+    }
+
+    openAttendanceTrendPopup() {
+        this.state.attendanceTrendPopupOpen = true;
+        // Render chart in popup after a short delay to ensure DOM is ready
+        setTimeout(() => {
+            this.renderAttendanceChartPopup();
+        }, 100);
+    }
+
+    closeAttendanceTrendPopup() {
+        this.state.attendanceTrendPopupOpen = false;
+        // Destroy popup chart instance
+        if (this.attendanceChartPopupInstance) {
+            this.attendanceChartPopupInstance.destroy();
+            this.attendanceChartPopupInstance = null;
+        }
+    }
+
+    openLeaveTrendPopup() {
+        this.state.leaveTrendPopupOpen = true;
+        // Render chart in popup after a short delay to ensure DOM is ready
+        setTimeout(() => {
+            this.renderLeaveChartPopup();
+        }, 100);
+    }
+
+    closeLeaveTrendPopup() {
+        this.state.leaveTrendPopupOpen = false;
+        // Destroy popup chart instance
+        if (this.leaveChartPopupInstance) {
+            this.leaveChartPopupInstance.destroy();
+            this.leaveChartPopupInstance = null;
+        }
+    }
+
+    openSkillsPopup() {
+        this.state.skillsPopupOpen = true;
+    }
+
+    closeSkillsPopup() {
+        this.state.skillsPopupOpen = false;
+    }
+
+    renderAttendanceChartPopup() {
+        if (typeof Chart === "undefined") return;
+        const canvas = document.getElementById("zohoAttendanceChartPopup");
+        if (!canvas || !this.state.attendanceChartData.length) return;
+
+        if (this.attendanceChartPopupInstance) {
+            this.attendanceChartPopupInstance.destroy();
+        }
+
+        try {
+            const ctx = canvas.getContext("2d");
+            this.attendanceChartPopupInstance = new Chart(ctx, {
+                type: "bar",
+                data: {
+                    labels: this.state.attendanceChartData.map(d => d.a_month || d.date),
+                    datasets: [{
+                        label: "Attendance",
+                        data: this.state.attendanceChartData.map(d => d.present_days),
+                        backgroundColor: "rgba(40, 167, 69, 0.2)",
+                        borderColor: "rgba(40, 167, 69, 1)",
+                        borderWidth: 2,
+                    }],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: { legend: { display: true } },
+                    scales: { y: { beginAtZero: true } },
+                },
+            });
+        } catch (error) {
+            console.error("Failed to render attendance chart in popup:", error);
+        }
+    }
+
+    renderLeaveChartPopup() {
+        if (typeof Chart === "undefined") return;
+        const canvas = document.getElementById("zohoLeaveChartPopup");
+        if (!canvas || !this.state.leaveChartData.length) return;
+
+        if (this.leaveChartPopupInstance) {
+            this.leaveChartPopupInstance.destroy();
+        }
+
+        try {
+            const ctx = canvas.getContext("2d");
+            this.leaveChartPopupInstance = new Chart(ctx, {
+                type: "line",
+                data: {
+                    labels: this.state.leaveChartData.map(d => d.l_month),
+                    datasets: [{
+                        label: "Leaves",
+                        data: this.state.leaveChartData.map(d => d.leave),
+                        backgroundColor: "rgba(26, 115, 232, 0.2)",
+                        borderColor: "rgba(26, 115, 232, 1)",
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4,
+                    }],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: { legend: { display: true } },
+                    scales: { y: { beginAtZero: true } },
+                },
+            });
+        } catch (error) {
+            console.error("Failed to render leave chart in popup:", error);
         }
     }
 
