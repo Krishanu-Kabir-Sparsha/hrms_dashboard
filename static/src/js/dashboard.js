@@ -89,6 +89,7 @@ export class ZohoDashboard extends Component {
             timerSeconds: 0,
             timerRunning: false,
             leaveChartData: [],
+            attendanceChartData: [], // NEW
             deptChartData: [],
             chartLoaded: false,
             leaveBalances: [],
@@ -96,6 +97,9 @@ export class ZohoDashboard extends Component {
             skills: [],
             currentAnnouncementIndex: 0,
             currentTime: new Date(),
+            // New quick stats
+            task_count: 0,
+            working_hours: 0,
             // User menu state
             userMenuOpen: false,
             activitiesPanelOpen: false,
@@ -2535,6 +2539,9 @@ export class ZohoDashboard extends Component {
 
             // Find the action for this model to get full menu context
             let actionId = null;
+            let mergedDomain = [...domain];
+            let mergedContext = { ...context };
+            
             try {
                 const actions = await this.orm.searchRead(
                     "ir.actions.act_window",
@@ -2551,15 +2558,15 @@ export class ZohoDashboard extends Component {
                     const actionContext = this.parseContextSafe(actions[0].context);
                     
                     // User domain takes precedence
-                    domain = [...actionDomain.filter(d => {
+                    mergedDomain = [...actionDomain.filter(d => {
                         // Don't include duplicate employee_id domains
                         if (Array.isArray(d) && d[0] === 'employee_id') {
-                            return !domain.some(ud => Array.isArray(ud) && ud[0] === 'employee_id');
+                            return !mergedDomain.some(ud => Array.isArray(ud) && ud[0] === 'employee_id');
                         }
                         return true;
                     }), ...domain];
                     
-                    context = { ...actionContext, ...context };
+                    mergedContext = { ...actionContext, ...context };
                     
                     // Check if action has calendar in view_mode
                     const viewModes = (actions[0].view_mode || "list").split(",").map(v => v.trim());
@@ -2595,8 +2602,8 @@ export class ZohoDashboard extends Component {
             }
 
             // Update domain and context
-            this.embeddedState.currentDomain = domain;
-            this.embeddedState.currentContext = context;
+            this.embeddedState.currentDomain = mergedDomain;
+            this.embeddedState.currentContext = mergedContext;
 
             // Load available view types
             await this.loadAvailableViewTypes(resModel);
@@ -2608,9 +2615,9 @@ export class ZohoDashboard extends Component {
 
             // For calendar view, use specialized method
             if (viewType === "calendar") {
-                await this.loadCalendarViaAction(resModel, title, domain, context);
+                await this.loadCalendarViaAction(resModel, title, mergedDomain, mergedContext);
             } else {
-                this.buildDynamicViewProps(resModel, viewType, domain, context);
+                this.buildDynamicViewProps(resModel, viewType, mergedDomain, mergedContext);
             }
 
         } catch (error) {
@@ -3353,16 +3360,13 @@ export class ZohoDashboard extends Component {
             const previousType = lastCrumb.previousViewType || "list";
             this.embeddedState.currentViewType = previousType;
             this.embeddedState.currentResId = false;
-            
-            if (this.embeddedState.breadcrumbs.length > 0) {
-                this.embeddedState.viewTitle = this.embeddedState.breadcrumbs[this.embeddedState.breadcrumbs.length - 1].name;
-            }
+            this.embeddedState.viewTitle = lastCrumb.name;
 
             // Use calendar-specific loading if going back to calendar
             if (previousType === "calendar") {
                 this.loadCalendarViaAction(
                     this.embeddedState.currentResModel,
-                    this.embeddedState.viewTitle,
+                    lastCrumb.name,
                     this.embeddedState.currentDomain,
                     this.embeddedState.currentContext
                 );
@@ -4603,8 +4607,65 @@ export class ZohoDashboard extends Component {
                 annCount = 0;
             }
 
-            // Update all counts reactively in one go (all on employee)
-            // Use spread operator to create new object reference for Owl reactivity
+            // Task List (task_management)
+            let taskCount = 0;
+            try {
+                if (this.state.employee && this.state.employee.user_id) {
+                    const userId = Array.isArray(this.state.employee.user_id)
+                        ? this.state.employee.user_id[0]
+                        : this.state.employee.user_id;
+                    taskCount = await this.orm.searchCount("task.management", [["user_id", "=", userId], ["stage_id", "!=", false]]);
+                }
+            } catch (e) {
+                console.error("[DASHBOARD] Error fetching task count:", e);
+                taskCount = 0;
+            }
+
+            // Working Hours (sum of worked_hours in attendance)
+            let workingHours = 0;
+            try {
+                if (this.state.attendance && this.state.attendance.length) {
+                    workingHours = this.state.attendance.reduce((sum, att) => sum + (parseFloat(att.worked_hours) || 0), 0);
+                }
+            } catch (e) {
+                console.error("[DASHBOARD] Error calculating working hours:", e);
+                workingHours = 0;
+            }
+
+            // Attendance Trend Chart Data (group by date, sum worked_hours)
+            let attendanceChartData = [];
+            try {
+                if (this.state.attendance && this.state.attendance.length) {
+                    const grouped = {};
+                    this.state.attendance.forEach(att => {
+                        if (!grouped[att.date]) grouped[att.date] = 0;
+                        grouped[att.date] += parseFloat(att.worked_hours) || 0;
+                    });
+                    attendanceChartData = Object.entries(grouped).map(([date, hours]) => ({ date, hours }));
+                }
+            } catch (e) {
+                console.error("[DASHBOARD] Error preparing attendance chart data:", e);
+                attendanceChartData = [];
+            }
+
+            // Leave Trend Chart Data (group by month, count leaves)
+            let leaveChartData = [];
+            try {
+                if (this.state.leaves && this.state.leaves.length) {
+                    const grouped = {};
+                    this.state.leaves.forEach(leave => {
+                        const month = (leave.request_date_from || '').slice(0, 7); // YYYY-MM
+                        if (!grouped[month]) grouped[month] = 0;
+                        grouped[month] += 1;
+                    });
+                    leaveChartData = Object.entries(grouped).map(([month, count]) => ({ month, count }));
+                }
+            } catch (e) {
+                console.error("[DASHBOARD] Error preparing leave chart data:", e);
+                leaveChartData = [];
+            }
+
+            // Update all counts and new quick stats reactively in one go
             this.state.employee = {
                 ...this.state.employee,
                 timesheet_count: timesheetCount,
@@ -4612,15 +4673,22 @@ export class ZohoDashboard extends Component {
                 documents_count: docCount,
                 announcements_count: annCount,
             };
-            console.log("[DASHBOARD] Updated employee counts:", {
+            this.state.task_count = taskCount;
+            this.state.working_hours = workingHours;
+            this.state.attendanceChartData = attendanceChartData;
+            this.state.leaveChartData = leaveChartData;
+            console.log("[DASHBOARD] Updated employee counts and quick stats:", {
                 timesheet_count: timesheetCount,
                 payslip_count: payslipCount,
                 documents_count: docCount,
                 announcements_count: annCount,
+                task_count: taskCount,
+                working_hours: workingHours,
+                attendanceChartData,
+                leaveChartData,
             });
 
-            // ...existing code...
-
+            // Load additional data: projects, upcoming events, charts
             try {
                 const projects = await this.orm.call("hr.employee", "get_employee_project_tasks", []);
                 this.state.projects = projects || [];
@@ -4661,6 +4729,9 @@ export class ZohoDashboard extends Component {
         try {
             const leaveData = await this.orm.call("hr.employee", "employee_leave_trend", []);
             this.state.leaveChartData = leaveData || [];
+
+            const attendanceData = await this.orm.call("hr.employee", "employee_attendance_trend", []);
+            this.state.attendanceChartData = attendanceData || [];
 
             if (this.state.isManager) {
                 const deptData = await this.orm.call("hr.employee", "get_dept_employee", []);
@@ -5055,6 +5126,7 @@ export class ZohoDashboard extends Component {
         if (!this.state.chartLoaded || typeof Chart === "undefined") return;
         setTimeout(() => {
             this.renderLeaveChart();
+            this.renderAttendanceChart();
             if (this.state.isManager) {
                 this.renderDeptChart();
             }
@@ -5082,6 +5154,39 @@ export class ZohoDashboard extends Component {
                         borderWidth: 2,
                         fill: true,
                         tension: 0.4,
+                    }],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: true } },
+                    scales: { y: { beginAtZero: true } },
+                },
+            });
+        } catch (error) {
+            console.error("Failed to render chart:", error);
+        }
+    }
+
+    renderAttendanceChart() {
+        if (typeof Chart === "undefined") return;
+        const canvas = document.getElementById("zohoAttendanceChart");
+        if (!canvas || !this.state.attendanceChartData.length) return;
+
+        if (this.attendanceChartInstance) this.attendanceChartInstance.destroy();
+
+        try {
+            const ctx = canvas.getContext("2d");
+            this.attendanceChartInstance = new Chart(ctx, {
+                type: "bar",
+                data: {
+                    labels: this.state.attendanceChartData.map(d => d.date),
+                    datasets: [{
+                        label: "Attendance",
+                        data: this.state.attendanceChartData.map(d => d.present_days),
+                        backgroundColor: "rgba(40, 167, 69, 0.2)",
+                        borderColor: "rgba(40, 167, 69, 1)",
+                        borderWidth: 2,
                     }],
                 },
                 options: {

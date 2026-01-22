@@ -437,13 +437,13 @@
                                         </button>
 
                                             <div class="quick_stats">
-                                                <div class="quick_stat" t-on-click="openPayslips">
-                                                    <span class="qs_value"><t t-esc="state.employee?.payslip_count || 0"/></span>
-                                                    <span class="qs_label">Payslips</span>
+                                                <div class="quick_stat" t-on-click="openTaskList">
+                                                    <span class="qs_value"><t t-esc="state.task_count || 0"/></span>
+                                                    <span class="qs_label">Task Lists</span>
                                                 </div>
-                                                <div class="quick_stat" t-on-click="openTimesheets">
-                                                    <span class="qs_value"><t t-esc="state.employee?.timesheet_count || 0"/></span>
-                                                    <span class="qs_label">Timesheets</span>
+                                                <div class="quick_stat">
+                                                    <span class="qs_value"><t t-esc="state.working_hours || 0"/></span>
+                                                    <span class="qs_label">Working Hours</span>
                                                 </div>
                                             </div>
 
@@ -561,7 +561,7 @@
                                                 </div>
                                             </div>
 
-                                            <div class="info_row">
+                                            <div class="info_grid_2x2">
                                                 <div class="info_card">
                                                     <h4>Personal Information</h4>
                                                     <div class="info_grid">
@@ -584,30 +584,33 @@
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <t t-if="state.skills.length">
-                                                    <div class="skills_card">
-                                                        <h4>My Skills</h4>
-                                                        <div class="skills_list">
-                                                            <t t-foreach="state.skills" t-as="skill" t-key="skill.id">
-                                                                <div class="skill_row">
-                                                                    <div class="skill_header">
-                                                                        <span t-esc="skill.name"/>
-                                                                        <span><t t-esc="skill.progress"/>%</span>
-                                                                    </div>
-                                                                    <div class="skill_bar">
-                                                                        <div class="skill_fill" t-attf-style="width: {{ skill.progress }}%"/>
-                                                                    </div>
+                                                <div class="skills_card">
+                                                    <h4>My Skills</h4>
+                                                    <div class="skills_list">
+                                                        <t t-foreach="state.skills" t-as="skill" t-key="skill.id">
+                                                            <div class="skill_row">
+                                                                <div class="skill_header">
+                                                                    <span t-esc="skill.name"/>
+                                                                    <span><t t-esc="skill.progress"/>%</span>
                                                                 </div>
-                                                            </t>
-                                                        </div>
+                                                                <div class="skill_bar">
+                                                                    <div class="skill_fill" t-attf-style="width: {{ skill.progress }}%"/>
+                                                                </div>
+                                                            </div>
+                                                        </t>
                                                     </div>
-                                                </t>
-                                            </div>
-
-                                            <div class="chart_card">
-                                                <h4>Leave Trend</h4>
-                                                <div class="chart_container">
-                                                    <canvas id="zohoLeaveChart"/>
+                                                </div>
+                                                <div class="chart_card">
+                                                    <h4>Attendance Trend</h4>
+                                                    <div class="chart_container">
+                                                        <canvas id="zohoAttendanceChart"/>
+                                                    </div>
+                                                </div>
+                                                <div class="chart_card">
+                                                    <h4>Leave Trend</h4>
+                                                    <div class="chart_container">
+                                                        <canvas id="zohoLeaveChart"/>
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
