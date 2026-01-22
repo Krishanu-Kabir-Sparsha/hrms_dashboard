@@ -4551,59 +4551,56 @@ export class ZohoDashboard extends Component {
                 payslipCount = 0;
             }
 
-            // Documents: Employees > Documents (hr.employee.document with fallback to ir.attachment)
+            // Documents: Employees > Documents (hr.employee.document with correct field)
             let docCount = 0;
             try {
                 let docDomain = [];
                 if (this.state.employee && this.state.employee.id) {
-                    docDomain = [["employee_id", "=", this.state.employee.id]];
+                    docDomain = [["employee_ref_id", "=", this.state.employee.id]];
                 }
-                // Try hr.employee.document first
-                try {
-                    docCount = await this.orm.searchCount("hr.employee.document", docDomain);
-                    console.log("[DASHBOARD] Document count from hr.employee.document:", docCount);
-                } catch (e1) {
-                    console.warn("[DASHBOARD] hr.employee.document not available, trying ir.attachment:", e1.message);
-                    // Fallback: try ir.attachment filtered by res_model and res_id
-                    if (this.state.employee && this.state.employee.id) {
-                        try {
-                            docCount = await this.orm.searchCount("ir.attachment", [
-                                ["res_model", "=", "hr.employee"],
-                                ["res_id", "=", this.state.employee.id]
-                            ]);
-                            console.log("[DASHBOARD] Document count from ir.attachment:", docCount);
-                        } catch (e2) {
-                            console.error("[DASHBOARD] Error fetching document count from ir.attachment:", e2);
-                            docCount = 0;
-                        }
-                    }
-                }
+                docCount = await this.orm.searchCount("hr.employee.document", docDomain);
+                console.log("[DASHBOARD] Document count from hr.employee.document:", docCount);
             } catch (e) {
                 console.error("[DASHBOARD] Error fetching document count:", e);
                 docCount = 0;
             }
 
-            // Announcements: Announcements (hr.announcement)
+            // Announcements: Announcements (hr.announcement) - match backend logic for all types
             let annCount = 0;
             try {
                 const today = new Date().toISOString().split("T")[0];
-                const annDomain = [
+                const empId = this.state.employee?.id;
+                const depId = this.state.employee?.department_id?.[0] || this.state.employee?.department_id;
+                const jobId = this.state.employee?.job_id?.[0] || this.state.employee?.job_id;
+                // General
+                const generalCount = await this.orm.searchCount("hr.announcement", [
+                    ["is_announcement", "=", true],
                     ["state", "=", "approved"],
-                    ["date_start", "<=", today],
-                    "|", ["date_end", ">=", today], ["date_end", "=", false]
-                ];
-                annCount = await this.orm.searchCount("hr.announcement", annDomain);
-                console.log("[DASHBOARD] Announcement count:", annCount, "domain:", annDomain);
+                    ["date_start", "<=", today]
+                ]);
+                // By Employee
+                const empCount = empId ? await this.orm.searchCount("hr.announcement", [
+                    ["employee_ids", "in", empId],
+                    ["state", "=", "approved"],
+                    ["date_start", "<=", today]
+                ]) : 0;
+                // By Department
+                const depCount = depId ? await this.orm.searchCount("hr.announcement", [
+                    ["department_ids", "in", depId],
+                    ["state", "=", "approved"],
+                    ["date_start", "<=", today]
+                ]) : 0;
+                // By Job Position
+                const jobCount = jobId ? await this.orm.searchCount("hr.announcement", [
+                    ["position_ids", "in", jobId],
+                    ["state", "=", "approved"],
+                    ["date_start", "<=", today]
+                ]) : 0;
+                annCount = generalCount + empCount + depCount + jobCount;
+                console.log("[DASHBOARD] Announcement count (all types):", annCount, {generalCount, empCount, depCount, jobCount});
             } catch (e) {
                 console.error("[DASHBOARD] Error fetching announcement count:", e);
-                // If hr.announcement doesn't exist, try without date filters
-                try {
-                    annCount = await this.orm.searchCount("hr.announcement", [["state", "=", "approved"]]);
-                    console.log("[DASHBOARD] Announcement count (simplified domain):", annCount);
-                } catch (e2) {
-                    console.error("[DASHBOARD] Error fetching announcement count (fallback):", e2);
-                    annCount = 0;
-                }
+                annCount = 0;
             }
 
             // Update all counts reactively in one go (all on employee)
