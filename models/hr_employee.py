@@ -551,48 +551,101 @@ class HrEmployee(models.Model):
     @api.model
     def get_dashboard_activity_types(self):
         """Return activity type cards with counts for the dashboard."""
-        # This will collect all activities assigned to the user grouped by activity_type
         Activity = self.env['mail.activity']
         user_id = self.env.user.id
 
         # Get all activity types
         atypes = self.env['mail.activity.type'].search([])
+        
         # Gather count per activity type for user
         per_type = Activity.sudo().read_group(
-            [('user_id', '=', user_id)], ['activity_type_id'], ['activity_type_id']
+            [('user_id', '=', user_id)], 
+            ['activity_type_id'], 
+            ['activity_type_id']
         )
         count_map = {x['activity_type_id'][0]: x['activity_type_id_count']
-                     for x in per_type if x['activity_type_id']}
-        # Also get overall "planned" count
+                    for x in per_type if x['activity_type_id']}
+        
+        # Total count
         total_count = Activity.sudo().search_count([('user_id', '=', user_id)])
 
-        # Card config with icon suggestions, you may improve UI further if needed
+        # Type icons mapping
         type_icons = {
             'call': '📞',
-            'meeting': '📆',
+            'meeting': '📅',
             'email': '✉️',
             'todo': '✅',
-            'followup': '🔁',
+            'followup': '🔍',
+            'upload': '📎',
         }
 
         result = []
         for t in atypes:
             type_key = (t.category or t.name or '').lower()
-            icon = type_icons.get(type_key, '📝')
+            icon = type_icons.get(type_key, '📋')
+            
+            # Determine color based on category or name
+            if 'call' in type_key:
+                color = '#28a745'
+            elif 'meet' in type_key:
+                color = '#9b59b6'
+            elif 'email' in type_key or 'mail' in type_key:
+                color = '#1abc9c'
+            elif 'todo' in type_key or 'to-do' in type_key or 'to do' in type_key:
+                color = '#e74c3c'
+            elif 'follow' in type_key:
+                color = '#e67e22'
+            elif 'upload' in type_key or 'document' in type_key:
+                color = '#3498db'
+            else:
+                color = '#6c757d'
+            
             result.append({
                 'type_id': t.id,
                 'name': t.name,
                 'icon': icon,
                 'count': count_map.get(t.id, 0),
                 'category': t.category or '',
+                'color': color,
             })
-        # Summary "All" card, always first
+        
+        # Add "All Activities" card at the beginning
         result = [{
             'type_id': False,
             'name': "All Activities",
             'icon': '📋',
             'count': total_count,
             'category': '',
+            'color': '#007bff',
         }] + result
+
+        return result
+    
+    @api.model
+    def employee_activities_trend(self):
+        """
+        Returns user mail.activity trend for the last 6 months, grouped by month.
+        X axis: months, Y: activity counts (created/assigned for me)
+        """
+        user = self.env.user
+        today = date.today()
+        result = []
+
+        Activity = self.env['mail.activity'].sudo()
+        for i in range(5, -1, -1):
+            month_date = today - timedelta(days=i * 30)
+            first = month_date.replace(day=1)
+            if month_date.month == 12:
+                last = month_date.replace(day=31)
+            else:
+                last = (first + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+
+            # Count activities assigned to this user in this month (by date_deadline)
+            count = Activity.search_count([
+                ('user_id', '=', user.id),
+                ('date_deadline', '>=', first),
+                ('date_deadline', '<=', last),
+            ])
+            result.append({'month': first.strftime('%b'), 'count': count})
 
         return result

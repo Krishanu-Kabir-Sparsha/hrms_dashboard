@@ -79,6 +79,7 @@ export class ZohoDashboard extends Component {
             leaves: [],
             expenses: [],
             projects: [],
+            tasks: [],
             birthdays: [],
             events: [],
             announcements: [],
@@ -141,7 +142,8 @@ export class ZohoDashboard extends Component {
             { id: "attendance", label: "Attendance" },
             { id: "leaves", label: "Leaves" },
             { id: "expenses", label: "Expenses" },
-            { id: "projects", label: "Projects" },
+            { id: "tasks", label: "Task Management" },  // CHANGED from "projects"
+            // { id: "projects", label: "Projects" },
             { id: "notifications", label: "Notifications" },
         ];
 
@@ -2295,6 +2297,7 @@ export class ZohoDashboard extends Component {
                 try {
                     this.activitiesChartInstance.destroy();
                 } catch (e) {}
+                this.activitiesChartInstance = null; // clear reference
             }
             if (this.activitiesChartPopupInstance) {
                 try {
@@ -3029,6 +3032,53 @@ export class ZohoDashboard extends Component {
                     return false;
                 },
             };
+
+            // CRITICAL FIX: Only add these props for non-Settings views
+            // Settings form views don't accept these custom props
+            const isSettingsView = resModel === 'res.config.settings' || 
+                                resModel === 'base.config.settings' ||
+                                this.embeddedState.viewTitle?.toLowerCase().includes('settings');
+            
+            if (!isSettingsView) {
+                // Only add custom props for non-Settings views
+                props.allowSelectionExport = true;
+                props.showButtons = true;
+                props.selectRecord = (id, opts) => this.handleSelectRecord(resModel, id, opts);
+                props.createRecord = () => this.handleCreateRecord(resModel);
+                props.onClickViewButton = async (params) => {
+                    const clickParams = params.clickParams || params;
+                    
+                    if (clickParams.type === 'action' && clickParams.name) {
+                        let actionId = self.extractActionId(clickParams.name);
+                        if (!actionId && clickParams.name.includes('.')) {
+                            actionId = await self.resolveXmlIdToActionId(clickParams.name);
+                        }
+                        if (actionId) {
+                            await self.loadActionById(actionId);
+                            return true;
+                        }
+                    }
+                    
+                    if (clickParams.type === 'object' && clickParams.name) {
+                        try {
+                            const result = await self.orm.call(
+                                resModel,
+                                clickParams.name,
+                                resId ? [[resId]] : [[]],
+                                { context: cleanContext }
+                            );
+                            if (result && typeof result === 'object' && result.type) {
+                                await self.actionService.doAction(result);
+                            }
+                            return true;
+                        } catch (e) {
+                            console.error("Error executing method:", e);
+                            return false;
+                        }
+                    }
+                    return false;
+                };
+            }
 
             if (this.embeddedState.currentActionId) {
                 props.actionId = this.embeddedState.currentActionId;
@@ -4469,6 +4519,12 @@ export class ZohoDashboard extends Component {
     }
 
     async loadInitialData() {
+        const activitiesTrend = await this.orm.call(
+            "hr.employee",
+            "employee_activities_trend",
+            []
+        );
+        this.state.activitiesChartData = activitiesTrend || [];
 
         try {
             // 1. Check if user is manager
@@ -4640,6 +4696,28 @@ export class ZohoDashboard extends Component {
                 taskCount = 0;
             }
 
+            try {
+                // Load tasks instead of projects
+                const tasks = await this.orm.searchRead(
+                    "task.management",
+                    [
+                        ["user_id", "=", this.state.currentUserId || this.state.employee?.user_id?.[0]]
+                    ],
+                    ["name", "priority", "deadline", "stage_id"],
+                    { limit: 10, order: "deadline asc" }
+                );
+                this.state.tasks = tasks.map(t => ({
+                    id: t.id,
+                    name: t.name || '',
+                    priority: t.priority || 'Normal',
+                    deadline: t.deadline ? t.deadline.split(' ')[0] : '-',
+                    stage: t.stage_id ? t.stage_id[1] : 'New',
+                }));
+            } catch (e) {
+                console.warn("Could not load tasks:", e);
+                this.state.tasks = [];
+            }
+
             // Working Hours (sum of worked_hours in attendance)
             let workingHours = 0;
             try {
@@ -4727,6 +4805,7 @@ export class ZohoDashboard extends Component {
             }
 
             await this.loadChartData();
+            await this.loadActivitiesTrendData(); // ADD THIS LINE
 
             if (this.state.isManager && !this.contentTabs.find(t => t.id === 'manager')) {
                 this.contentTabs.push({ id: "manager", label: "Manager View" });
@@ -4744,60 +4823,86 @@ export class ZohoDashboard extends Component {
         }
     }
 
+    // Add these methods
+    async addTask() {
+        try {
+            // Try to open Task Management form
+            const actionId = await this.resolveXmlIdToActionId('task_management.action_my_tasks');
+            
+            if (actionId) {
+                await this.actionService.doAction({
+                    type: "ir.actions.act_window",
+                    name: _t("New Task"),
+                    res_model: "task.management",
+                    views: [[false, "form"]],
+                    target: "new",
+                    context: this.state.employee?.user_id ? {
+                        default_user_id: Array.isArray(this.state.employee.user_id) 
+                            ? this.state.employee.user_id[0] 
+                            : this.state.employee.user_id
+                    } : {},
+                });
+            }
+        } catch (error) {
+            console.error("Failed to open task form:", error);
+            this.notification.add(_t("Failed to open task form"), { type: "warning" });
+        }
+    }
+
+    async openAllTasks() {
+        try {
+            const actionId = await this.resolveXmlIdToActionId('task_management.action_my_tasks');
+            if (actionId) {
+                this.embeddedState.activeSidebarItem = "operations";
+                await this.loadActionById(actionId);
+            } else {
+                // Fallback
+                if (this.state.employee?.user_id) {
+                    const userId = Array.isArray(this.state.employee.user_id)
+                        ? this.state.employee.user_id[0]
+                        : this.state.employee.user_id;
+                    await this.loadEmbeddedView("task.management", "My Tasks", [
+                        ["user_id", "=", userId]
+                    ], "list");
+                }
+            }
+        } catch (error) {
+            this.notification.add(_t("Could not open tasks"), { type: "warning" });
+        }
+    }
+
+    async onTaskRowClick(task) {
+        await this.actionService.doAction({
+            type: "ir.actions.act_window",
+            name: _t("Task"),
+            res_model: "task.management",
+            res_id: task.id,
+            views: [[false, "form"]],
+            target: "new",
+        });
+    }
+
     async loadActivitiesTrendData() {
         if (!this.state.currentUserId) return;
         
         try {
-            const today = new Date();
-            const activityTypes = {
-                'call': 0,
-                'meeting': 0,
-                'email': 0,
-                'todo': 0,
-                'followup': 0,
-                'upload': 0
-            };
-            
-            // Load activities for the current user
-            const activities = await this.orm.searchRead(
-                "mail.activity",
-                [["user_id", "=", this.state.currentUserId]],
-                ["activity_type_id", "create_date"],
-                { limit: 500 }
+            // Call the new backend method that gets activity types with counts
+            const activityTypes = await this.orm.call(
+                "hr.employee",
+                "get_dashboard_activity_types",
+                []
             );
             
-            // Count activities by type
-            for (const activity of activities) {
-                if (!activity.activity_type_id) continue;
-                
-                const typeName = (activity.activity_type_id[1] || "").toLowerCase();
-                
-                if (typeName.includes("call")) {
-                    activityTypes.call++;
-                } else if (typeName.includes("meet")) {
-                    activityTypes.meeting++;
-                } else if (typeName.includes("email") || typeName.includes("mail")) {
-                    activityTypes.email++;
-                } else if (typeName.includes("todo") || typeName.includes("to-do") || typeName.includes("to do")) {
-                    activityTypes.todo++;
-                } else if (typeName.includes("follow")) {
-                    activityTypes.followup++;
-                } else if (typeName.includes("upload") || typeName.includes("document")) {
-                    activityTypes.upload++;
-                }
-            }
+            // Transform to chart format
+            this.state.activitiesChartData = activityTypes.map(type => ({
+                type: (type.name || '').toLowerCase().replace(/\s+/g, '_'),
+                label: type.name,
+                count: type.count,
+                color: type.color,
+                typeId: type.type_id,
+            }));
             
-            // Convert to chart data format
-            this.state.activitiesChartData = [
-                { type: 'Call', count: activityTypes.call, color: '#28a745' },
-                { type: 'Meeting', count: activityTypes.meeting, color: '#ffc107' },
-                { type: 'Email', count: activityTypes.email, color: '#dc3545' },
-                { type: 'To-Do', count: activityTypes.todo, color: '#17a2b8' },
-                { type: 'Follow-up', count: activityTypes.followup, color: '#6c757d' },
-                { type: 'Upload', count: activityTypes.upload, color: '#007bff' }
-            ];
-            
-            console.log("[DASHBOARD] Activities chart data:", this.state.activitiesChartData);
+            console.log("[DASHBOARD] Activities chart data loaded:", this.state.activitiesChartData);
         } catch (error) {
             console.error("Failed to load activities trend data:", error);
             this.state.activitiesChartData = [];
@@ -4812,7 +4917,7 @@ export class ZohoDashboard extends Component {
             const attendanceData = await this.orm.call("hr.employee", "employee_attendance_trend", []);
             this.state.attendanceChartData = attendanceData || [];
             
-            // NEW: Load activities trend
+            // Load activities trend
             await this.loadActivitiesTrendData();
 
             if (this.state.isManager) {
@@ -5207,35 +5312,96 @@ export class ZohoDashboard extends Component {
 
     renderCharts() {
         if (!this.state.chartLoaded || typeof Chart === "undefined") return;
-        setTimeout(() => {
-            this.renderLeaveChart();
-            this.renderAttendanceChart();
-            this.renderActivitiesChart(); // NEW: Add this line
-            if (this.state.isManager) {
-                this.renderDeptChart();
-            }
-        }, 500);
+        
+        // Use requestAnimationFrame to ensure DOM is ready
+        requestAnimationFrame(() => {
+            setTimeout(() => {
+                this.renderLeaveChart();
+                this.renderAttendanceChart();
+                this.renderActivitiesChart();
+                if (this.state.isManager) {
+                    this.renderDeptChart();
+                }
+
+                // Activities Trend Chart
+                if (this.state.activitiesChartData && this.state.activitiesChartData.length) {
+                    const chartElem = document.getElementById("activitiesTrendChart");
+                    if (!chartElem) return; // <--- FIX: do not proceed if not found in DOM
+                    const ctx = chartElem.getContext("2d");
+                    if (!ctx) return; // <--- FIX: skip if context cannot be obtained
+
+                    if (this.activitiesChartInstance) {
+                        try { this.activitiesChartInstance.destroy(); } catch (e) {}
+                    }
+
+                    this.activitiesChartInstance = new Chart(ctx, {
+                        type: "line",
+                        data: {
+                            labels: this.state.activitiesChartData.map(x => x.month),
+                            datasets: [{
+                                label: "Activities",
+                                data: this.state.activitiesChartData.map(x => x.count),
+                                backgroundColor: "rgba(26, 115, 232, 0.20)",
+                                borderColor: "#1a73e8",
+                                borderWidth: 2,
+                                fill: true,
+                                tension: 0.4,
+                                pointRadius: 4,
+                                pointHoverRadius: 6,
+                            }],
+                        },
+                        options: {
+                            scales: {
+                                y: { beginAtZero: true }
+                            },
+                            plugins: { legend: { display: true } }
+                        }
+                    });
+                }
+            }, 100);
+        });
+
+        
     }
 
-    // Add the new chart rendering method
+
     renderActivitiesChart() {
         if (typeof Chart === "undefined") return;
         const canvas = document.getElementById("zohoActivitiesChart");
-        if (!canvas || !this.state.activitiesChartData.length) return;
+        if (!canvas) {
+            console.debug("Activities chart canvas not found in DOM");
+            return;
+        }
+        if (!this.state.activitiesChartData || this.state.activitiesChartData.length === 0) {
+            console.debug("No activities chart data available");
+            return;
+        }
 
-        if (this.activitiesChartInstance) this.activitiesChartInstance.destroy();
+        if (this.activitiesChartInstance) {
+            try {
+                this.activitiesChartInstance.destroy();
+            } catch (e) {
+                console.debug("Could not destroy previous chart instance");
+            }
+        }
 
         try {
             const ctx = canvas.getContext("2d");
+            if (!ctx) {
+                console.warn("Could not get canvas context");
+                return;
+            }
+            
             this.activitiesChartInstance = new Chart(ctx, {
-                type: "doughnut",
+                type: "bar",
                 data: {
-                    labels: this.state.activitiesChartData.map(d => d.type),
+                    labels: this.state.activitiesChartData.map(d => d.label || d.name),
                     datasets: [{
+                        label: "Activities",
                         data: this.state.activitiesChartData.map(d => d.count),
                         backgroundColor: this.state.activitiesChartData.map(d => d.color),
+                        borderColor: '#fff',
                         borderWidth: 2,
-                        borderColor: '#fff'
                     }],
                 },
                 options: {
@@ -5243,12 +5409,29 @@ export class ZohoDashboard extends Component {
                     maintainAspectRatio: false,
                     plugins: { 
                         legend: { 
-                            position: 'right',
-                            labels: {
-                                fontSize: 11,
-                                boxWidth: 12
+                            display: false 
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return context.parsed.y + ' activities';
+                                }
                             }
-                        } 
+                        }
+                    },
+                    scales: { 
+                        y: { 
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                maxRotation: 45,
+                                minRotation: 45
+                            }
+                        }
                     },
                 },
             });
@@ -5257,12 +5440,97 @@ export class ZohoDashboard extends Component {
         }
     }
 
-    // Add popup methods for activities chart
+    async openTaskList() {
+        // Try to load Task Management module's "My Tasks" view
+        try {
+            // First, try to find the action by XML ID
+            const actionId = await this.resolveXmlIdToActionId('task_management.action_my_tasks');
+            
+            if (actionId) {
+                this.embeddedState.activeSidebarItem = "operations";
+                await this.loadActionById(actionId);
+            } else {
+                // Fallback: load task.management model directly
+                if (this.state.employee && this.state.employee.user_id) {
+                    const userId = Array.isArray(this.state.employee.user_id)
+                        ? this.state.employee.user_id[0]
+                        : this.state.employee.user_id;
+                        
+                    this.embeddedState.activeSidebarItem = "operations";
+                    await this.loadEmbeddedView("task.management", "My Tasks", [
+                        ["user_id", "=", userId]
+                    ], "list");
+                } else {
+                    this.notification.add(_t("Could not load tasks"), { type: "warning" });
+                }
+            }
+        } catch (error) {
+            console.error("Failed to open task list:", error);
+            this.notification.add(_t("Task Management module may not be installed"), { type: "warning" });
+        }
+    }
+
+
+
+    async renderActivitiesTrendChart(canvas, data = null, options = {}) {
+        // If data is not supplied, grab from state
+        if (!data) {
+            data = this.state.activitiesChartData;
+        }
+        if (!canvas) return;
+        // Destroy existing chart instance if it exists
+        if (canvas._chartInstance) {
+            canvas._chartInstance.destroy();
+        }
+
+        const months = data.map(d => d.month);
+        const counts = data.map(d => d.count);
+
+        // Use Chart.js (already loaded elsewhere)
+        // Use same chart type as dashboard card (Line recommended)
+        canvas._chartInstance = new window.Chart(canvas, {
+            type: 'line',
+            data: {
+                labels: months,
+                datasets: [{
+                    label: 'Activities',
+                    data: counts,
+                    fill: true,
+                    tension: 0.3,
+                    borderColor: "#1a73e8",
+                    backgroundColor: "rgba(26,115,232,0.08)",
+                    pointBackgroundColor: "#1a73e8",
+                    pointRadius: 5,
+                    pointHoverRadius: 8,
+                }],
+            },
+            options: Object.assign({
+                responsive: true,
+                plugins: {
+                    legend: { display: true },
+                },
+                scales: {
+                    x: { grid: { display: false } },
+                    y: { beginAtZero: true },
+                }
+            }, options)
+        });
+    }
+
+    // Call this.chartLoaded = true after initial charts are rendered/loaded
+
+    // In your popup logic (the function triggered on card click):
+
     openActivitiesTrendPopup() {
         this.state.activitiesTrendPopupOpen = true;
+
+        // use setTimeout to allow DOM rendering first
         setTimeout(() => {
-            this.renderActivitiesChartPopup();
-        }, 100);
+            const canvas = document.querySelector(".popup_chart_container canvas");
+            if (canvas) {
+                this.renderActivitiesTrendChart(canvas);
+            }
+        }, 10);
     }
 
     closeActivitiesTrendPopup() {
@@ -5273,40 +5541,85 @@ export class ZohoDashboard extends Component {
         }
     }
 
+    // NEW: Open specific activity type in embedded view
+    async openActivityTypeDetails(activityData) {
+        this.closeActivitiesTrendPopup();
+        
+        if (!this.state.currentUserId) return;
+        
+        // Build domain to filter by user and activity type
+        let domain = [["user_id", "=", this.state.currentUserId]];
+        
+        if (activityData.typeId) {
+            domain.push(["activity_type_id", "=", activityData.typeId]);
+        }
+        
+        const title = `${activityData.label} Activities`;
+        
+        // Open embedded view with activities
+        this.embeddedState.activeSidebarItem = "home";
+        await this.loadEmbeddedView("mail.activity", title, domain, "list");
+    }
+
     renderActivitiesChartPopup() {
         if (typeof Chart === "undefined") return;
         const canvas = document.getElementById("zohoActivitiesChartPopup");
         if (!canvas || !this.state.activitiesChartData.length) return;
 
         if (this.activitiesChartPopupInstance) {
-            this.activitiesChartPopupInstance.destroy();
+            try { this.activitiesChartPopupInstance.destroy(); } catch (e) {}
         }
 
         try {
             const ctx = canvas.getContext("2d");
+            if (!ctx) return;
+            
+            // Filter out activities with 0 count for cleaner visualization
+            const validData = this.state.activitiesChartData.filter(d => d.count > 0);
+            
+            if (validData.length === 0) {
+                // If no valid data, just return
+                return;
+            }
+            
             this.activitiesChartPopupInstance = new Chart(ctx, {
                 type: "bar",
                 data: {
-                    labels: this.state.activitiesChartData.map(d => d.type),
+                    labels: validData.map(d => d.label || d.name || 'Unknown'),
                     datasets: [{
-                        label: "Activities",
-                        data: this.state.activitiesChartData.map(d => d.count),
-                        backgroundColor: this.state.activitiesChartData.map(d => d.color),
-                        borderColor: this.state.activitiesChartData.map(d => d.color),
-                        borderWidth: 2,
+                        label: "Number of Activities",
+                        data: validData.map(d => d.count),
+                        backgroundColor: validData.map(d => d.color || '#007bff'),
+                        borderColor: validData.map(d => d.color || '#007bff'),
+                        borderWidth: 1,
                     }],
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: true,
-                    plugins: { legend: { display: false } },
+                    plugins: { 
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return context.parsed.y + ' activities';
+                                }
+                            }
+                        }
+                    },
                     scales: { 
                         y: { 
                             beginAtZero: true,
                             ticks: {
                                 stepSize: 1
                             }
-                        } 
+                        },
+                        x: {
+                            ticks: {
+                                maxRotation: 45,
+                                minRotation: 45
+                            }
+                        }
                     },
                 },
             });

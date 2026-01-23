@@ -603,11 +603,11 @@
                                                     </div>
                                                 </div>
 
-                                                <!-- NEW: Activities Trend Card -->
+                                                <!-- NEW: Activities Trend Card with Type Cards -->
                                                 <div class="chart_card activities_chart_card clickable_card" t-on-click="openActivitiesTrendPopup">
                                                     <h4>Activities Trend</h4>
                                                     <div class="chart_container">
-                                                        <canvas id="zohoActivitiesChart"/>
+                                                        <canvas id="activitiesTrendChart"/>
                                                     </div>
                                                 </div>
 
@@ -879,7 +879,7 @@
                                         </div>
 
                                         <!-- Projects Tab -->
-                                        <div class="tab_panel" t-att-class="{ 'is-active': state.activeTab === 'projects' }">
+                                        <!-- <div class="tab_panel" t-att-class="{ 'is-active': state.activeTab === 'projects' }">
                                             <div class="section_header">
                                                 <h3>My Tasks</h3>
                                                 <div class="section_actions">
@@ -907,6 +907,42 @@
                                                             </tr>
                                                         </t>
                                                         <t t-if="!state.projects.length">
+                                                            <tr><td colspan="4" class="empty_cell">No tasks found</td></tr>
+                                                        </t>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div> -->
+
+                                        <!-- Task Management Tab (previously Projects) -->
+                                        <div class="tab_panel" t-att-class="{ 'is-active': state.activeTab === 'tasks' }">
+                                            <div class="section_header">
+                                                <h3>My Tasks</h3>
+                                                <div class="section_actions">
+                                                    <button class="btn_outline" t-on-click="openAllTasks">View All</button>
+                                                    <button class="btn_primary" t-on-click="addTask">+ Add</button>
+                                                </div>
+                                            </div>
+                                            <div class="data_table_wrapper">
+                                                <table class="data_table">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Task Name</th>
+                                                            <th>Priority</th>
+                                                            <th>Due Date</th>
+                                                            <th>Status</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <t t-foreach="state.tasks" t-as="task" t-key="task.id">
+                                                            <tr t-on-click="() => this.onTaskRowClick(task)">
+                                                                <td t-esc="task.name"/>
+                                                                <td t-esc="task.priority"/>
+                                                                <td t-esc="task.deadline"/>
+                                                                <td><span class="status_badge" style="background:#6c757d;" t-esc="task.stage"/></td>
+                                                            </tr>
+                                                        </t>
+                                                        <t t-if="!state.tasks || !state.tasks.length">
                                                             <tr><td colspan="4" class="empty_cell">No tasks found</td></tr>
                                                         </t>
                                                     </tbody>
