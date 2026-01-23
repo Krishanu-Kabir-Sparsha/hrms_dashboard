@@ -95,6 +95,8 @@ export class ZohoDashboard extends Component {
             leaveBalances: [],
             teamMembers: [],
             skills: [],
+            activitiesChartData: [], // NEW: Add this line
+            activitiesTrendPopupOpen: false, // NEW: Add this line
             currentAnnouncementIndex: 0,
             currentTime: new Date(),
             // New quick stats
@@ -2286,6 +2288,18 @@ export class ZohoDashboard extends Component {
                 } catch (e) {
                     console.warn("Could not restore restore method:", e);
                 }
+            }
+
+            // Add this block
+            if (this.activitiesChartInstance) {
+                try {
+                    this.activitiesChartInstance.destroy();
+                } catch (e) {}
+            }
+            if (this.activitiesChartPopupInstance) {
+                try {
+                    this.activitiesChartPopupInstance.destroy();
+                } catch (e) {}
             }
             
             // Cleanup client action
@@ -4730,6 +4744,66 @@ export class ZohoDashboard extends Component {
         }
     }
 
+    async loadActivitiesTrendData() {
+        if (!this.state.currentUserId) return;
+        
+        try {
+            const today = new Date();
+            const activityTypes = {
+                'call': 0,
+                'meeting': 0,
+                'email': 0,
+                'todo': 0,
+                'followup': 0,
+                'upload': 0
+            };
+            
+            // Load activities for the current user
+            const activities = await this.orm.searchRead(
+                "mail.activity",
+                [["user_id", "=", this.state.currentUserId]],
+                ["activity_type_id", "create_date"],
+                { limit: 500 }
+            );
+            
+            // Count activities by type
+            for (const activity of activities) {
+                if (!activity.activity_type_id) continue;
+                
+                const typeName = (activity.activity_type_id[1] || "").toLowerCase();
+                
+                if (typeName.includes("call")) {
+                    activityTypes.call++;
+                } else if (typeName.includes("meet")) {
+                    activityTypes.meeting++;
+                } else if (typeName.includes("email") || typeName.includes("mail")) {
+                    activityTypes.email++;
+                } else if (typeName.includes("todo") || typeName.includes("to-do") || typeName.includes("to do")) {
+                    activityTypes.todo++;
+                } else if (typeName.includes("follow")) {
+                    activityTypes.followup++;
+                } else if (typeName.includes("upload") || typeName.includes("document")) {
+                    activityTypes.upload++;
+                }
+            }
+            
+            // Convert to chart data format
+            this.state.activitiesChartData = [
+                { type: 'Call', count: activityTypes.call, color: '#28a745' },
+                { type: 'Meeting', count: activityTypes.meeting, color: '#ffc107' },
+                { type: 'Email', count: activityTypes.email, color: '#dc3545' },
+                { type: 'To-Do', count: activityTypes.todo, color: '#17a2b8' },
+                { type: 'Follow-up', count: activityTypes.followup, color: '#6c757d' },
+                { type: 'Upload', count: activityTypes.upload, color: '#007bff' }
+            ];
+            
+            console.log("[DASHBOARD] Activities chart data:", this.state.activitiesChartData);
+        } catch (error) {
+            console.error("Failed to load activities trend data:", error);
+            this.state.activitiesChartData = [];
+        }
+    }
+
     async loadChartData() {
         try {
             const leaveData = await this.orm.call("hr.employee", "employee_leave_trend", []);
@@ -4737,6 +4811,9 @@ export class ZohoDashboard extends Component {
 
             const attendanceData = await this.orm.call("hr.employee", "employee_attendance_trend", []);
             this.state.attendanceChartData = attendanceData || [];
+            
+            // NEW: Load activities trend
+            await this.loadActivitiesTrendData();
 
             if (this.state.isManager) {
                 const deptData = await this.orm.call("hr.employee", "get_dept_employee", []);
@@ -4746,6 +4823,7 @@ export class ZohoDashboard extends Component {
             console.error("Failed to load chart data:", error);
         }
     }
+
 
     async loadApps() {
         try {
@@ -5132,10 +5210,109 @@ export class ZohoDashboard extends Component {
         setTimeout(() => {
             this.renderLeaveChart();
             this.renderAttendanceChart();
+            this.renderActivitiesChart(); // NEW: Add this line
             if (this.state.isManager) {
                 this.renderDeptChart();
             }
         }, 500);
+    }
+
+    // Add the new chart rendering method
+    renderActivitiesChart() {
+        if (typeof Chart === "undefined") return;
+        const canvas = document.getElementById("zohoActivitiesChart");
+        if (!canvas || !this.state.activitiesChartData.length) return;
+
+        if (this.activitiesChartInstance) this.activitiesChartInstance.destroy();
+
+        try {
+            const ctx = canvas.getContext("2d");
+            this.activitiesChartInstance = new Chart(ctx, {
+                type: "doughnut",
+                data: {
+                    labels: this.state.activitiesChartData.map(d => d.type),
+                    datasets: [{
+                        data: this.state.activitiesChartData.map(d => d.count),
+                        backgroundColor: this.state.activitiesChartData.map(d => d.color),
+                        borderWidth: 2,
+                        borderColor: '#fff'
+                    }],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { 
+                        legend: { 
+                            position: 'right',
+                            labels: {
+                                fontSize: 11,
+                                boxWidth: 12
+                            }
+                        } 
+                    },
+                },
+            });
+        } catch (error) {
+            console.error("Failed to render activities chart:", error);
+        }
+    }
+
+    // Add popup methods for activities chart
+    openActivitiesTrendPopup() {
+        this.state.activitiesTrendPopupOpen = true;
+        setTimeout(() => {
+            this.renderActivitiesChartPopup();
+        }, 100);
+    }
+
+    closeActivitiesTrendPopup() {
+        this.state.activitiesTrendPopupOpen = false;
+        if (this.activitiesChartPopupInstance) {
+            this.activitiesChartPopupInstance.destroy();
+            this.activitiesChartPopupInstance = null;
+        }
+    }
+
+    renderActivitiesChartPopup() {
+        if (typeof Chart === "undefined") return;
+        const canvas = document.getElementById("zohoActivitiesChartPopup");
+        if (!canvas || !this.state.activitiesChartData.length) return;
+
+        if (this.activitiesChartPopupInstance) {
+            this.activitiesChartPopupInstance.destroy();
+        }
+
+        try {
+            const ctx = canvas.getContext("2d");
+            this.activitiesChartPopupInstance = new Chart(ctx, {
+                type: "bar",
+                data: {
+                    labels: this.state.activitiesChartData.map(d => d.type),
+                    datasets: [{
+                        label: "Activities",
+                        data: this.state.activitiesChartData.map(d => d.count),
+                        backgroundColor: this.state.activitiesChartData.map(d => d.color),
+                        borderColor: this.state.activitiesChartData.map(d => d.color),
+                        borderWidth: 2,
+                    }],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: { legend: { display: false } },
+                    scales: { 
+                        y: { 
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1
+                            }
+                        } 
+                    },
+                },
+            });
+        } catch (error) {
+            console.error("Failed to render activities chart in popup:", error);
+        }
     }
 
     renderLeaveChart() {

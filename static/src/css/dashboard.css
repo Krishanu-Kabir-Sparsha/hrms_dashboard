@@ -3006,15 +3006,16 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
 /* Info Grid 2x2 */
 .info_grid_2x2 {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 20px;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
     margin-bottom: 24px;
 }
 
 .info_card,
-.skills_card {
+.skills_card,
+.chart_card {
     background: var(--bg-card);
-    padding: 20px;
+    padding: 16px; /* Reduced from 20px */
     border-radius: var(--radius);
     border: 1px solid var(--border);
     box-shadow: var(--shadow-xs);
@@ -3024,9 +3025,9 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
 .info_card h4,
 .skills_card h4,
 .chart_card h4 {
-    font-size: 15px;
+    font-size: 13px; /* Reduced from 15px */
     font-weight: 600;
-    margin: 0 0 16px;
+    margin: 0 0 12px; /* Reduced from 16px */
     color: #1a472a;
 }
 
@@ -3045,46 +3046,46 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
 .info_grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 16px;
+    gap: 12px; /* Reduced from 16px */
 }
 
 .info_field label {
-    font-size: 10px;
+    font-size: 9px; /* Reduced from 10px */
     color: var(--text-light);
     text-transform: uppercase;
     letter-spacing: 0.3px;
     display: block;
-    margin-bottom: 4px;
+    margin-bottom: 3px; /* Reduced from 4px */
 }
 
 .info_field p {
     margin: 0;
     font-weight: 500;
     color: var(--text-dark);
-    font-size: 13px;
+    font-size: 12px; /* Reduced from 13px */
 }
 
-/* Skills */
+/* Adjust skills list */
 .skills_list {
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 10px; /* Reduced from 14px */
 }
 
 .skill_row {
-    margin-bottom: 8px;
+    margin-bottom: 6px; /* Reduced from 8px */
 }
 
 .skill_header {
     display: flex;
     justify-content: space-between;
-    font-size: 12px;
+    font-size: 11px; /* Reduced from 12px */
     color: var(--text-medium);
-    margin-bottom: 5px;
+    margin-bottom: 4px; /* Reduced from 5px */
 }
 
 .skill_bar {
-    height: 7px;
+    height: 6px; /* Reduced from 7px */
     background: #e9ecef;
     border-radius: 4px;
     overflow: hidden;
@@ -3095,6 +3096,28 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
     background: linear-gradient(90deg, var(--primary) 0%, #667eea 100%);
     border-radius: 4px;
     transition: width 0.5s ease;
+}
+
+/* Personal Info card - make it span 1 column only */
+.info_card.personal_info_card {
+    grid-column: span 1;
+}
+
+/* Chart cards - each spans 1 column */
+.chart_card.attendance_chart_card,
+.chart_card.leave_chart_card,
+.chart_card.activities_chart_card {
+    grid-column: span 1;
+}
+
+/* Skills card - spans 1 column */
+.skills_card {
+    grid-column: span 1;
+}
+
+/* Activities chart card specific styling */
+.chart_card.activities_chart_card {
+    /* Will be placed in the grid naturally */
 }
 
 /* Chart Card */
@@ -3108,7 +3131,7 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
 }
 
 .chart_container {
-    height: 240px;
+    height: 180px; /* Reduced from 240px */
     position: relative;
 }
 
@@ -4038,6 +4061,18 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
     .stats_grid {
         grid-template-columns: repeat(3, 1fr);
     }
+
+    .info_grid_2x2 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .info_card.personal_info_card,
+    .chart_card.attendance_chart_card,
+    .chart_card.leave_chart_card,
+    .chart_card.activities_chart_card,
+    .skills_card {
+        grid-column: span 1;
+    }
 }
 
 @media (max-width: 1200px) {
@@ -4065,6 +4100,10 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
 }
 
 @media (max-width: 992px) {
+    .info_grid_2x2 {
+        grid-template-columns: 1fr;
+    }
+    
     .zoho_home_view {
         flex-direction: column;
     }

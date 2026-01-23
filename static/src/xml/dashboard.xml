@@ -562,7 +562,8 @@
                                             </div>
 
                                             <div class="info_grid_2x2">
-                                                <div class="info_card clickable_card" t-on-click="openPersonalInfoPopup">
+                                                <!-- Personal Information Card - Now Smaller -->
+                                                <div class="info_card personal_info_card clickable_card" t-on-click="openPersonalInfoPopup">
                                                     <h4>Personal Information</h4>
                                                     <div class="info_grid">
                                                         <div class="info_field">
@@ -585,18 +586,32 @@
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <div class="chart_card clickable_card" t-on-click="openAttendanceTrendPopup">
+
+                                                <!-- Attendance Trend Card - Now Smaller -->
+                                                <div class="chart_card attendance_chart_card clickable_card" t-on-click="openAttendanceTrendPopup">
                                                     <h4>Attendance Trend</h4>
                                                     <div class="chart_container">
                                                         <canvas id="zohoAttendanceChart"/>
                                                     </div>
                                                 </div>
-                                                <div class="chart_card clickable_card" t-on-click="openLeaveTrendPopup">
+
+                                                <!-- Leave Trend Card - Now Smaller -->
+                                                <div class="chart_card leave_chart_card clickable_card" t-on-click="openLeaveTrendPopup">
                                                     <h4>Leave Trend</h4>
                                                     <div class="chart_container">
                                                         <canvas id="zohoLeaveChart"/>
                                                     </div>
                                                 </div>
+
+                                                <!-- NEW: Activities Trend Card -->
+                                                <div class="chart_card activities_chart_card clickable_card" t-on-click="openActivitiesTrendPopup">
+                                                    <h4>Activities Trend</h4>
+                                                    <div class="chart_container">
+                                                        <canvas id="zohoActivitiesChart"/>
+                                                    </div>
+                                                </div>
+
+                                                <!-- Skills Card - Now Smaller -->
                                                 <div class="skills_card clickable_card" t-on-click="openSkillsPopup">
                                                     <h4>My Skills</h4>
                                                     <div class="skills_list">
@@ -724,7 +739,25 @@
                                                     </div>
                                                 </div>
                                             </t>
+
+                                            <!-- Activities Trend Popup -->
+                                            <t t-if="state.activitiesTrendPopupOpen">
+                                                <div class="card_popup_overlay" t-on-click="closeActivitiesTrendPopup">
+                                                    <div class="card_popup_content chart_popup" t-on-click.stop="">
+                                                        <div class="popup_header">
+                                                            <h3>Activities Trend</h3>
+                                                            <button class="popup_close_btn" t-on-click="closeActivitiesTrendPopup">×</button>
+                                                        </div>
+                                                        <div class="popup_body">
+                                                            <div class="popup_chart_container">
+                                                                <canvas id="zohoActivitiesChartPopup"/>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </t>
                                         </div>
+
 
                                         <!-- Attendance Tab -->
                                         <div class="tab_panel" t-att-class="{ 'is-active': state.activeTab === 'attendance' }">

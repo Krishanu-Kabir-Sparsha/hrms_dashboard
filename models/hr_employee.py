@@ -547,3 +547,52 @@ class HrEmployee(models.Model):
             return result
         except Exception: 
             return []
+    
+    @api.model
+    def get_dashboard_activity_types(self):
+        """Return activity type cards with counts for the dashboard."""
+        # This will collect all activities assigned to the user grouped by activity_type
+        Activity = self.env['mail.activity']
+        user_id = self.env.user.id
+
+        # Get all activity types
+        atypes = self.env['mail.activity.type'].search([])
+        # Gather count per activity type for user
+        per_type = Activity.sudo().read_group(
+            [('user_id', '=', user_id)], ['activity_type_id'], ['activity_type_id']
+        )
+        count_map = {x['activity_type_id'][0]: x['activity_type_id_count']
+                     for x in per_type if x['activity_type_id']}
+        # Also get overall "planned" count
+        total_count = Activity.sudo().search_count([('user_id', '=', user_id)])
+
+        # Card config with icon suggestions, you may improve UI further if needed
+        type_icons = {
+            'call': '📞',
+            'meeting': '📆',
+            'email': '✉️',
+            'todo': '✅',
+            'followup': '🔁',
+        }
+
+        result = []
+        for t in atypes:
+            type_key = (t.category or t.name or '').lower()
+            icon = type_icons.get(type_key, '📝')
+            result.append({
+                'type_id': t.id,
+                'name': t.name,
+                'icon': icon,
+                'count': count_map.get(t.id, 0),
+                'category': t.category or '',
+            })
+        # Summary "All" card, always first
+        result = [{
+            'type_id': False,
+            'name': "All Activities",
+            'icon': '📋',
+            'count': total_count,
+            'category': '',
+        }] + result
+
+        return result
