@@ -686,6 +686,9 @@
                                                             <div class="popup_chart_container">
                                                                 <canvas id="zohoAttendanceChartPopup"/>
                                                             </div>
+                                                               <div class="popup_footer">
+                                                                   <button class="view_all_btn" t-on-click="openAllAttendance">View All Attendance</button>
+                                                               </div>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -703,6 +706,9 @@
                                                             <div class="popup_chart_container">
                                                                 <canvas id="zohoLeaveChartPopup"/>
                                                             </div>
+                                                               <div class="popup_footer">
+                                                                   <button class="view_all_btn" t-on-click="openAllLeaves">View All Leaves</button>
+                                                               </div>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -752,6 +758,9 @@
                                                             <div class="popup_chart_container">
                                                                 <canvas id="zohoActivitiesChartPopup"/>
                                                             </div>
+                                                               <div class="popup_footer">
+                                                                   <button class="view_all_btn" t-on-click="openAllActivities">View All Activities</button>
+                                                               </div>
                                                         </div>
                                                     </div>
                                                 </div>
