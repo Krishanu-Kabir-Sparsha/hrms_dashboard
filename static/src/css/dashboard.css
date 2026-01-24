@@ -1,3 +1,105 @@
+/* ============ ONGOING ACTIVITIES SECTION ============ */
+.ongoing_activities_section {
+    margin: 32px 0 24px 0;
+}
+.ongoing_activities_title {
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--text-dark);
+    margin-bottom: 16px;
+}
+.ongoing_activities_row {
+    display: flex;
+    flex-direction: row;
+    gap: 18px;
+}
+.ongoing_activity_card {
+    flex: 1 1 0;
+    min-width: 0;
+    background: var(--bg-card);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-xs);
+    border: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 10px 18px 10px;
+    cursor: pointer;
+    transition: box-shadow 0.2s, border-color 0.2s, transform 0.2s;
+}
+.ongoing_activity_card:hover {
+    box-shadow: var(--shadow-md);
+    border-color: var(--primary);
+    transform: translateY(-3px) scale(1.03);
+}
+.ongoing_activity_card .activity_icon {
+    font-size: 28px;
+    margin-bottom: 10px;
+}
+.ongoing_activity_card .activity_count {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--primary);
+    margin-bottom: 4px;
+}
+.ongoing_activity_card .activity_label {
+    font-size: 13px;
+    color: var(--text-medium);
+    font-weight: 600;
+    letter-spacing: 0.2px;
+}
+@media (max-width: 1100px) {
+    .ongoing_activities_row {
+        flex-wrap: wrap;
+        gap: 14px;
+    }
+    .ongoing_activity_card {
+        flex-basis: 48%;
+        min-width: 180px;
+    }
+}
+@media (max-width: 700px) {
+    .ongoing_activities_row {
+        flex-direction: column;
+        gap: 10px;
+    }
+    .ongoing_activity_card {
+        flex-basis: 100%;
+        min-width: 0;
+    }
+}
+/* ============ HR DASHBOARD: 4-CARD INFO ROW ============ */
+.info_row_4cards {
+    display: flex;
+    flex-direction: row;
+    gap: 20px;
+    margin-top: 24px;
+    margin-bottom: 24px;
+}
+.info_row_4cards > * {
+    flex: 1 1 0;
+    min-width: 0;
+}
+@media (max-width: 1200px) {
+    .info_row_4cards {
+        flex-wrap: wrap;
+    }
+    .info_row_4cards > * {
+        flex-basis: 48%;
+        min-width: 260px;
+    }
+}
+@media (max-width: 800px) {
+    .info_row_4cards {
+        flex-direction: column;
+        gap: 16px;
+    }
+    .info_row_4cards > * {
+        flex-basis: 100%;
+        min-width: 0;
+    }
+}
 /* ============================================
    ZOHO STYLE DASHBOARD - COMPLETE SPA CSS
    Odoo 18 Community Edition
@@ -4166,15 +4268,7 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
     
     .info_card.personal_info_card,
     .chart_card.attendance_chart_card,
-    .chart_card.leave_chart_card,
-    .chart_card.activities_chart_card,
-    .skills_card {
-        grid-column: span 1;
-    }
-}
-
-@media (max-width: 1200px) {
-    .stats_grid {
+    .chart_card.leave_chart_card {
         grid-template-columns: repeat(2, 1fr);
     }
 

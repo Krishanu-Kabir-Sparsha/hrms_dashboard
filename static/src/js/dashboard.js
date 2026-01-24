@@ -96,8 +96,13 @@ export class ZohoDashboard extends Component {
             leaveBalances: [],
             teamMembers: [],
             skills: [],
-            activitiesChartData: [], // NEW: Add this line
-            activitiesTrendPopupOpen: false, // NEW: Add this line
+            ongoingActivities: {
+                todo: 0,
+                call: 0,
+                meeting: 0,
+                email: 0,
+                followup: 0,
+            },
             currentAnnouncementIndex: 0,
             currentTime: new Date(),
             // New quick stats
@@ -4519,6 +4524,26 @@ export class ZohoDashboard extends Component {
     }
 
     async loadInitialData() {
+        // Fetch ongoing activities counts using backend method for accurate mapping
+        try {
+            const activityTypes = await this.orm.call("hr.employee", "get_dashboard_activity_types", []);
+            // Map backend types to our dashboard cards
+            const typeMap = {
+                todo: ["to-do", "todo", "to do", "to_do"],
+                call: ["call"],
+                meeting: ["meeting", "meet"],
+                email: ["email", "mail"],
+                followup: ["followup", "follow-up", "follow up"],
+            };
+            const counts = { todo: 0, call: 0, meeting: 0, email: 0, followup: 0 };
+            for (const key in typeMap) {
+                const found = activityTypes.find(t => typeMap[key].some(syn => (t.name || '').toLowerCase().includes(syn)));
+                counts[key] = found ? found.count : 0;
+            }
+            this.state.ongoingActivities = counts;
+        } catch (e) {
+            this.state.ongoingActivities = { todo: 0, call: 0, meeting: 0, email: 0, followup: 0 };
+        }
         const activitiesTrend = await this.orm.call(
             "hr.employee",
             "employee_activities_trend",
@@ -5078,12 +5103,30 @@ export class ZohoDashboard extends Component {
         return "#007bff";
     }
 
-    async openActivityType(typeId) {
-        this.closeActivitiesPanel();
-        if (!this.state.currentUserId) return;
-        const domain = [["user_id", "=", this.state.currentUserId]];
-        if (typeId) {
-            domain.push(["activity_type_id", "=", typeId]);
+    async openActivityType(typeKey) {
+        this.closeActivitiesPanel && this.closeActivitiesPanel();
+        const userId = this.state.currentUserId || this.state.employee?.user_id || this.state.employee?.id;
+        if (!userId) return;
+        // Map typeKey to activity_type_id name
+        const typeMap = {
+            todo: ["to_do", "todo", "to-do", "to do"],
+            call: ["call"],
+            meeting: ["meeting", "meet"],
+            email: ["email", "mail"],
+            followup: ["followup", "follow-up", "follow up"],
+        };
+        let activityTypeIds = [];
+        // Fetch all activity types and match by name
+        const allTypes = await this.orm.searchRead("mail.activity.type", [], ["id", "name"]);
+        for (const t of allTypes) {
+            const name = (t.name || "").toLowerCase();
+            if (typeMap[typeKey] && typeMap[typeKey].some(n => name.includes(n))) {
+                activityTypeIds.push(t.id);
+            }
+        }
+        const domain = [["user_id", "=", userId]];
+        if (activityTypeIds.length) {
+            domain.push(["activity_type_id", "in", activityTypeIds]);
         }
         this.embeddedState.activeSidebarItem = "operations";
         await this.loadEmbeddedView("mail.activity", "Activities", domain, "list");

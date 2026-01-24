@@ -561,8 +561,9 @@
                                                 </div>
                                             </div>
 
-                                            <div class="info_grid_2x2">
-                                                <!-- Personal Information Card - Now Smaller -->
+                                            <div class="info_row_4cards">
+                                                                                            
+                                                <!-- Personal Information Card -->
                                                 <div class="info_card personal_info_card clickable_card" t-on-click="openPersonalInfoPopup">
                                                     <h4>Personal Information</h4>
                                                     <div class="info_grid">
@@ -587,7 +588,7 @@
                                                     </div>
                                                 </div>
 
-                                                <!-- Attendance Trend Card - Now Smaller -->
+                                                <!-- Attendance Trend Card -->
                                                 <div class="chart_card attendance_chart_card clickable_card" t-on-click="openAttendanceTrendPopup">
                                                     <h4>Attendance Trend</h4>
                                                     <div class="chart_container">
@@ -595,7 +596,7 @@
                                                     </div>
                                                 </div>
 
-                                                <!-- Leave Trend Card - Now Smaller -->
+                                                <!-- Leave Trend Card -->
                                                 <div class="chart_card leave_chart_card clickable_card" t-on-click="openLeaveTrendPopup">
                                                     <h4>Leave Trend</h4>
                                                     <div class="chart_container">
@@ -603,15 +604,7 @@
                                                     </div>
                                                 </div>
 
-                                                <!-- NEW: Activities Trend Card with Type Cards -->
-                                                <div class="chart_card activities_chart_card clickable_card" t-on-click="openActivitiesTrendPopup">
-                                                    <h4>Activities Trend</h4>
-                                                    <div class="chart_container">
-                                                        <canvas id="activitiesTrendChart"/>
-                                                    </div>
-                                                </div>
-
-                                                <!-- Skills Card - Now Smaller -->
+                                                <!-- Skills Card -->
                                                 <div class="skills_card clickable_card" t-on-click="openSkillsPopup">
                                                     <h4>My Skills</h4>
                                                     <div class="skills_list">
@@ -626,6 +619,57 @@
                                                                 </div>
                                                             </div>
                                                         </t>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <!-- Ongoing Activities Section -->
+                                            <div class="ongoing_activities_section">
+                                                <h4 class="ongoing_activities_title">Ongoing
+                                                    Activities</h4>
+                                                <div class="ongoing_activities_row">
+                                                    <div class="ongoing_activity_card todo"
+                                                        t-on-click="() => this.openActivityType('todo')">
+                                                        <div class="activity_icon">✅</div>
+                                                        <div class="activity_count">
+                                                            <t t-esc="state.ongoingActivities.todo || 0" />
+                                                        </div>
+                                                        <div class="activity_label">To-Do</div>
+                                                    </div>
+                                                    <div class="ongoing_activity_card call"
+                                                        t-on-click="() => this.openActivityType('call')">
+                                                        <div class="activity_icon">📞</div>
+                                                        <div class="activity_count">
+                                                            <t
+                                                                t-esc="state.ongoingActivities.call || 0" />
+                                                        </div>
+                                                        <div class="activity_label">Call</div>
+                                                    </div>
+                                                    <div class="ongoing_activity_card meeting"
+                                                        t-on-click="() => this.openActivityType('meeting')">
+                                                        <div class="activity_icon">📅</div>
+                                                        <div class="activity_count">
+                                                            <t
+                                                                t-esc="state.ongoingActivities.meeting || 0" />
+                                                        </div>
+                                                        <div class="activity_label">Meeting</div>
+                                                    </div>
+                                                    <div class="ongoing_activity_card email"
+                                                        t-on-click="() => this.openActivityType('email')">
+                                                        <div class="activity_icon">✉️</div>
+                                                        <div class="activity_count">
+                                                            <t
+                                                                t-esc="state.ongoingActivities.email || 0" />
+                                                        </div>
+                                                        <div class="activity_label">Email</div>
+                                                    </div>
+                                                    <div class="ongoing_activity_card followup"
+                                                        t-on-click="() => this.openActivityType('followup')">
+                                                        <div class="activity_icon">🔁</div>
+                                                        <div class="activity_count">
+                                                            <t
+                                                                t-esc="state.ongoingActivities.followup || 0" />
+                                                        </div>
+                                                        <div class="activity_label">Follow-up</div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -746,25 +790,6 @@
                                                 </div>
                                             </t>
 
-                                            <!-- Activities Trend Popup -->
-                                            <t t-if="state.activitiesTrendPopupOpen">
-                                                <div class="card_popup_overlay" t-on-click="closeActivitiesTrendPopup">
-                                                    <div class="card_popup_content chart_popup" t-on-click.stop="">
-                                                        <div class="popup_header">
-                                                            <h3>Activities Trend</h3>
-                                                            <button class="popup_close_btn" t-on-click="closeActivitiesTrendPopup">×</button>
-                                                        </div>
-                                                        <div class="popup_body">
-                                                            <div class="popup_chart_container">
-                                                                <canvas id="zohoActivitiesChartPopup"/>
-                                                            </div>
-                                                               <div class="popup_footer">
-                                                                   <button class="view_all_btn" t-on-click="openAllActivities">View All Activities</button>
-                                                               </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </t>
                                         </div>
 
 
