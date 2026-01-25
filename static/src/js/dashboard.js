@@ -4619,12 +4619,14 @@ export class ZohoDashboard extends Component {
             // 3. Fetch card counts directly from the actual list views' models
             // Timesheets: Task Management > task.timesheet.line (uses user_id, not employee_id)
             let timesheetCount = 0;
+            let timesheetPlannedHours = 0;
+            let timesheetActualHours = 0;
             try {
                 let timesheetDomain = [];
                 if (this.state.employee && this.state.employee.user_id) {
                     // task.timesheet.line uses user_id field, not employee_id
-                    const userId = Array.isArray(this.state.employee.user_id) 
-                        ? this.state.employee.user_id[0] 
+                    const userId = Array.isArray(this.state.employee.user_id)
+                        ? this.state.employee.user_id[0]
                         : this.state.employee.user_id;
                     if (userId) {
                         timesheetDomain = [["user_id", "=", userId]];
@@ -4632,13 +4634,24 @@ export class ZohoDashboard extends Component {
                 }
                 if (timesheetDomain.length > 0) {
                     timesheetCount = await this.orm.searchCount("task.timesheet.line", timesheetDomain);
-                    console.log("[DASHBOARD] Timesheet count:", timesheetCount, "domain:", timesheetDomain);
+                    // Fetch all time logs for the user and sum planned/actual hours
+                    const timesheetLines = await this.orm.searchRead(
+                        "task.timesheet.line",
+                        timesheetDomain,
+                        ["planned_hours", "unit_amount"],
+                        { limit: 1000 }
+                    );
+                    timesheetPlannedHours = timesheetLines.reduce((sum, l) => sum + (parseFloat(l.planned_hours) || 0), 0);
+                    timesheetActualHours = timesheetLines.reduce((sum, l) => sum + (parseFloat(l.unit_amount) || 0), 0);
+                    console.log("[DASHBOARD] Timesheet count:", timesheetCount, "Planned:", timesheetPlannedHours, "Actual:", timesheetActualHours);
                 } else {
                     console.warn("[DASHBOARD] No user_id found for employee, skipping timesheet count");
                 }
             } catch (e) {
                 console.error("[DASHBOARD] Error fetching timesheet count:", e);
                 timesheetCount = 0;
+                timesheetPlannedHours = 0;
+                timesheetActualHours = 0;
             }
 
             // Payslips: Payroll > Employee Payslips (hr.payslip)
@@ -4795,6 +4808,8 @@ export class ZohoDashboard extends Component {
                 documents_count: docCount,
                 announcements_count: annCount,
             };
+            this.state.timesheet_planned_hours = timesheetPlannedHours;
+            this.state.timesheet_actual_hours = timesheetActualHours;
             this.state.task_count = taskCount;
             this.state.working_hours = workingHours;
             this.state.attendanceChartData = attendanceChartData;
@@ -6304,13 +6319,27 @@ export class ZohoDashboard extends Component {
     }
 
     openTimesheets() {
-        // Open Time Log Summary from Task Management (timesheet.report)
-        this.loadEmbeddedView("timesheet.report", "Time Log Summary", []);
+        // Open Time Log Summary from Task Management (timesheet.report) in Pivot view
+        // Filter to only the current user's timesheet records (distinct user)
+        let userId = null;
+        // Try to get user_id from employee, fallback to currentUserId
+        if (this.state.employee && this.state.employee.user_id && Array.isArray(this.state.employee.user_id)) {
+            userId = this.state.employee.user_id[0];
+        } else if (this.state.currentUserId) {
+            userId = this.state.currentUserId;
+        }
+        const domain = userId ? [["user_id", "=", userId]] : [];
+        this.loadEmbeddedView("timesheet.report", "Time Log Summary", domain, "pivot");
     }
 
     // Replaces Contracts card: now Documents
     async openDocuments() {
-        // Dynamically resolve the correct action for the Documents menu by name
+        // Open Documents filtered by current employee
+        let domain = [];
+        if (this.state.employee?.id) {
+            domain = [["employee_ref_id", "=", this.state.employee.id]];
+        }
+        // Try to resolve the action for Documents
         try {
             // Find the menu with name 'Documents'
             const menus = await this.orm.searchRead(
@@ -6324,14 +6353,15 @@ export class ZohoDashboard extends Component {
                 const actionRef = menus[0].action;
                 const actionId = parseInt(actionRef.split(",")[1], 10);
                 if (actionId) {
-                    await this.loadActionById(actionId);
+                    // Use loadEmbeddedViewWithMenus to apply domain filter
+                    await this.loadEmbeddedViewWithMenus("hr.employee.document", "Documents", domain);
                     return;
                 }
             }
             // Fallback: try to resolve by action name/model
             const fallbackId = await this.resolveActionByNameOrModel("Documents", "hr.employee.document");
             if (fallbackId) {
-                await this.loadActionById(fallbackId);
+                await this.loadEmbeddedViewWithMenus("hr.employee.document", "Documents", domain);
                 return;
             }
             this.notification.add(_t("Could not find the Documents menu action."), { type: "danger" });

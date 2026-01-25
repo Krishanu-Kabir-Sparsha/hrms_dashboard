@@ -548,6 +548,10 @@
                                                     <div class="sc_icon">⏱️</div>
                                                     <div class="sc_value"><t t-esc="state.employee?.timesheet_count || 0"/></div>
                                                     <div class="sc_label">Timesheets</div>
+                                                    <div class="sc_subinfo timesheet_subinfo">
+                                                        <span class="sc_subitem planned">Planned: <t t-esc="state.timesheet_planned_hours || 0"/> h</span>
+                                                        <span class="sc_subitem actual">Actual: <t t-esc="state.timesheet_actual_hours || 0"/> h</span>
+                                                    </div>
                                                 </div>
                                                 <div class="stat_card" t-on-click="openDocuments">
                                                     <div class="sc_icon">📄</div>
