@@ -49,6 +49,33 @@ class HrEmployee(models.Model):
         
         return employee
 
+    def _get_leave_balance_summary(self, employee):
+        """Get leave balance summary for dashboard card"""
+        try:
+            allocations = self.env['hr.leave.allocation'].sudo().search([
+                ('employee_id', '=', employee.id),
+                ('state', '=', 'validate'),
+            ])
+            
+            total_allocated = sum(a.number_of_days for a in allocations)
+            total_taken = sum(a.leaves_taken for a in allocations)
+            total_remaining = total_allocated - total_taken
+            num_leave_types = len(allocations.mapped('holiday_status_id'))
+            
+            return {
+                'total_allocated': total_allocated,
+                'total_taken': total_taken,
+                'total_remaining': total_remaining,
+                'num_leave_types': num_leave_types,
+            }
+        except Exception:
+            return {
+                'total_allocated': 0,
+                'total_taken': 0,
+                'total_remaining': 0,
+                'num_leave_types': 0,
+            }
+    
     @api.model
     def check_user_group(self):
         """Check if current user is a manager"""
@@ -108,7 +135,8 @@ class HrEmployee(models.Model):
 
             # Calculate experience
             experience = self._calculate_experience(employee)
-
+            # Get leave balance summary
+            leave_summary = self._get_leave_balance_summary(employee)
             # Get various counts - UPDATED to use correct models
             payslip_count = self._get_payslip_count(employee)
             timesheet_count = self._get_timesheet_report_count(employee)  # NEW: from timesheet.report
@@ -122,7 +150,7 @@ class HrEmployee(models.Model):
             leaves_this_month = self._get_leaves_this_month()
             leaves_alloc_req = self._get_allocation_requests()
             job_applications = self._get_job_applications()
-
+            
             result = [{
                 'id': employee.id,
                 'user_id': self.env.user.id,
@@ -150,6 +178,7 @@ class HrEmployee(models.Model):
                 'job_applications': job_applications,
                 'attendance_lines': attendance_lines,
                 'leave_lines': leave_lines,
+                'leave_balance_summary': leave_summary,
                 'expense_lines': expense_lines,
             }]
             # Debug log for dashboard counts

@@ -2727,7 +2727,6 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
     margin-top: 20px;
     padding-top: 20px;
     border-top: 1px solid var(--border-light);
-    text-align: left;
 }
 
 .leave_balance_section h4,
@@ -2741,6 +2740,148 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
 
 .leave_balance_row {
     margin-bottom: 12px;
+}
+
+.leave_balance_card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: var(--radius);
+    padding: 20px;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: var(--shadow-sm);
+    color: white;
+}
+
+.leave_balance_card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 30px rgba(102, 126, 234, 0.4);
+}
+
+.leave_balance_card h4 {
+    margin: 0 0 16px;
+    font-size: 15px;
+    font-weight: 600;
+    color: white;
+    opacity: 0.95;
+}
+
+.leave_summary_grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+}
+
+.leave_summary_item {
+    background: rgba(255, 255, 255, 0.15);
+    padding: 12px;
+    border-radius: var(--radius-sm);
+    backdrop-filter: blur(10px);
+}
+
+.leave_summary_value {
+    font-size: 24px;
+    font-weight: 700;
+    color: white;
+    display: block;
+    margin-bottom: 4px;
+}
+
+.leave_summary_label {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.85);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 500;
+}
+
+/* ============ LEAVE BALANCE POPUP ============ */
+.leave_balance_popup {
+    max-width: 600px;
+}
+
+.popup_leave_balances {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.popup_leave_row {
+    background: var(--bg-hover);
+    padding: 16px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+}
+
+.popup_lb_header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.popup_lb_type {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-dark);
+}
+
+.popup_lb_count {
+    font-size: 13px;
+    color: var(--text-medium);
+    font-weight: 500;
+}
+
+.popup_lb_count .remaining {
+    color: var(--primary);
+    font-weight: 700;
+    font-size: 15px;
+}
+
+.popup_lb_bar {
+    height: 8px;
+    background: #e9ecef;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.popup_lb_fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--success) 0%, #00b894 100%);
+    border-radius: 4px;
+    transition: width 0.5s ease;
+}
+
+.popup_actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+}
+
+.btn_view_all {
+    padding: 10px 24px;
+    background: var(--primary);
+    color: white;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.btn_view_all:hover {
+    background: var(--primary-hover);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(26, 115, 232, 0.3);
+}
+
+@media (max-width: 768px) {
+    .leave_summary_grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 .lb_header {

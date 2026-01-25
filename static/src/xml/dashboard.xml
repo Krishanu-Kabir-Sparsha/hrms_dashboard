@@ -449,18 +449,77 @@
 
                                         <t t-if="state.leaveBalances.length">
                                             <div class="leave_balance_section">
-                                                <h4>Leave Balance</h4>
-                                                <t t-foreach="state.leaveBalances" t-as="bal" t-key="bal.id">
-                                                    <div class="leave_balance_row">
-                                                        <div class="lb_header">
-                                                            <span class="lb_type" t-esc="bal.type"/>
-                                                            <span class="lb_count"><t t-esc="bal.remaining"/>/<t t-esc="bal.allocated"/></span>
+                                                <div class="leave_balance_card" t-on-click="openLeaveBalancePopup">
+                                                    <h4>📊 Leave Balance</h4>
+                                                    <div class="leave_summary_grid">
+                                                        <div class="leave_summary_item">
+                                                            <span class="leave_summary_value">
+                                                                <t t-esc="state.leaveBalanceSummary.total_allocated || 0"/>
+                                                            </span>
+                                                            <span class="leave_summary_label">Total Days</span>
                                                         </div>
-                                                        <div class="lb_bar">
-                                                            <div class="lb_fill" t-attf-style="width: {{ bal.allocated > 0 ? (bal.remaining / bal.allocated) * 100 : 0 }}%"/>
+                                                        <div class="leave_summary_item">
+                                                            <span class="leave_summary_value">
+                                                                <t t-esc="state.leaveBalanceSummary.num_leave_types || 0"/>
+                                                            </span>
+                                                            <span class="leave_summary_label">Leave Types</span>
+                                                        </div>
+                                                        <div class="leave_summary_item">
+                                                            <span class="leave_summary_value">
+                                                                <t t-esc="state.leaveBalanceSummary.total_taken || 0"/>
+                                                            </span>
+                                                            <span class="leave_summary_label">Days Taken</span>
+                                                        </div>
+                                                        <div class="leave_summary_item">
+                                                            <span class="leave_summary_value">
+                                                                <t t-esc="state.leaveBalanceSummary.total_remaining || 0"/>
+                                                            </span>
+                                                            <span class="leave_summary_label">Remaining</span>
                                                         </div>
                                                     </div>
-                                                </t>
+                                                </div>
+                                            </div>
+                                        </t>
+
+                                        <!-- Add this popup AFTER the Skills Popup (around line with t-if="state.skillsPopupOpen") -->
+                                        <!-- Leave Balance Popup -->
+                                        <t t-if="state.leaveBalancePopupOpen">
+                                            <div class="card_popup_overlay" t-on-click="closeLeaveBalancePopup">
+                                                <div class="card_popup_content leave_balance_popup" t-on-click.stop="">
+                                                    <div class="popup_header">
+                                                        <h3>📊 Leave Balance Details</h3>
+                                                        <button class="popup_close_btn" t-on-click="closeLeaveBalancePopup">×</button>
+                                                    </div>
+                                                    <div class="popup_body">
+                                                        <div class="popup_leave_balances">
+                                                            <t t-if="state.leaveBalances.length">
+                                                                <t t-foreach="state.leaveBalances" t-as="bal" t-key="bal.id">
+                                                                    <div class="popup_leave_row">
+                                                                        <div class="popup_lb_header">
+                                                                            <span class="popup_lb_type" t-esc="bal.type"/>
+                                                                            <span class="popup_lb_count">
+                                                                                <span class="remaining" t-esc="bal.remaining"/>
+                                                                                / <t t-esc="bal.allocated"/> days
+                                                                            </span>
+                                                                        </div>
+                                                                        <div class="popup_lb_bar">
+                                                                            <div class="popup_lb_fill" 
+                                                                                t-attf-style="width: {{ bal.allocated > 0 ? (bal.remaining / bal.allocated) * 100 : 0 }}%"/>
+                                                                        </div>
+                                                                    </div>
+                                                                </t>
+                                                            </t>
+                                                            <t t-else="">
+                                                                <div class="popup_empty_state">No leave allocations found</div>
+                                                            </t>
+                                                        </div>
+                                                        <div class="popup_actions">
+                                                            <button class="btn_view_all" t-on-click="viewAllLeaveAllocations">
+                                                                📋 View All Allocations
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
                                             </div>
                                         </t>
 

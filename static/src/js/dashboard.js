@@ -103,6 +103,13 @@ export class ZohoDashboard extends Component {
                 email: 0,
                 followup: 0,
             },
+            leaveBalancePopupOpen: false,
+            leaveBalanceSummary: {
+                total_allocated: 0,
+                total_taken: 0,
+                total_remaining: 0,
+                num_leave_types: 0,
+            },
             currentAnnouncementIndex: 0,
             currentTime: new Date(),
             // New quick stats
@@ -126,6 +133,7 @@ export class ZohoDashboard extends Component {
             leaveTrendPopupOpen: false,
             skillsPopupOpen: false,
         });
+        
 
         // Navigation items - some use action IDs for proper dashboard loading
         this.sidebarItems = [
@@ -202,6 +210,26 @@ export class ZohoDashboard extends Component {
 
         // Intercept browser history changes when in SPA mode
         this.setupRouterInterception();
+    }
+
+    openLeaveBalancePopup() {
+        this.state.leaveBalancePopupOpen = true;
+    }
+
+    closeLeaveBalancePopup() {
+        this.state.leaveBalancePopupOpen = false;
+    }
+
+    async viewAllLeaveAllocations() {
+        this.closeLeaveBalancePopup();
+        if (!this.state.employee?.id) return;
+        
+        // Open leave allocations view filtered by employee
+        this.embeddedState.activeSidebarItem = "leave";
+        await this.loadEmbeddedView("hr.leave.allocation", "My Leave Allocations", [
+            ["employee_id", "=", this.state.employee.id],
+            ["state", "=", "validate"]
+        ], "list");
     }
 
     /**
@@ -4574,6 +4602,10 @@ export class ZohoDashboard extends Component {
                         documents_count: 0,
                         announcements_count: 0,
                     }, empDetails[0]);
+                    // Store leave balance summary
+                    if (empDetails[0].leave_balance_summary) {
+                        this.state.leaveBalanceSummary = empDetails[0].leave_balance_summary;
+                    }
                     console.log("[DASHBOARD] Mapped state.employee:", this.state.employee);
                     employeeId = empDetails[0].id;
                     this.state.attendance = empDetails[0].attendance_lines || [];
