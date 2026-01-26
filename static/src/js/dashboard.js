@@ -132,6 +132,154 @@ export class ZohoDashboard extends Component {
             attendanceTrendPopupOpen: false,
             leaveTrendPopupOpen: false,
             skillsPopupOpen: false,
+            // Manager Employee Applications count (EAMS)
+            managerEmployeeApplicationsCount: 0,
+        });
+
+        // Load count for manager Employee Applications (EAMS)
+        this.loadManagerEmployeeApplicationsCount = async () => {
+            try {
+                // Count only applications in 'submitted' state
+                const employeeId = this.state.employee?.id;
+                const domain = [["state", "=", "submitted"]];
+                if (employeeId) {
+                    domain.push(["employee_id", "=", employeeId]);
+                }
+                const count = await this.orm.call(
+                    "eams.employee.application",
+                    "search_count",
+                    domain
+                );
+                this.state.managerEmployeeApplicationsCount = count;
+            } catch (e) {
+                this.state.managerEmployeeApplicationsCount = 0;
+            }
+        };
+
+        // Handler to open all Employee Applications (EAMS) for manager
+        this.openManagerEmployeeApplications = () => {
+            this.loadEmbeddedView(
+                "eams.employee.application",
+                "Employee Applications",
+                [["state", "=", "submitted"]],
+                "list"
+            );
+        };
+        this.addEmployeeApplication = async () => {
+            await this.actionService.doAction({
+                type: "ir.actions.act_window",
+                name: _t("Employee Application"),
+                res_model: "eams.employee.application",
+                view_mode: "form",
+                views: [[false, "form"]],
+                target: "new",
+                context: {
+                    default_employee_id: this.state.employee?.id || false,
+                },
+            });
+        };
+        // Core Services
+        this.actionService = useService("action");
+        this.orm = useService("orm");
+        this.notification = useService("notification");
+
+        // Refs
+        this.dashboardWrapperRef = useRef("dashboardWrapper");
+
+        // Embedded State
+        this.embeddedState = useState({
+            isEmbeddedMode: false,
+            currentApp: null,
+            currentMenus: [],
+            breadcrumbs: [],
+            loading: false,
+            viewTitle: "",
+            currentViewType: "list",
+            currentResModel: null,
+            currentResId: false,
+            currentDomain: [],
+            currentContext: {},
+            currentViews: [],  // Store views from action [viewId, viewType] pairs
+            availableViewTypes: [],
+            viewProps: null,
+            viewKey: 0,
+            errorMessage: null,
+            fabOpen: false,
+            currentActionId: null,
+            isClientAction: false,
+            clientActionMounted: false,
+            // Dynamic client action component
+            clientActionComponent: null,
+            clientActionProps: null,
+            // NEW: Track active sidebar item for proper highlighting
+            activeSidebarItem: null,
+        });
+
+        // Local State
+        this.state = useState({
+            loading: true,
+            isManager: false,
+            currentView: "home",
+            activeTab: "activities",
+            activeMainTab: "myspace",
+            employee: null,
+            attendance: [],
+            leaves: [],
+            expenses: [],
+            projects: [],
+            tasks: [],
+            birthdays: [],
+            events: [],
+            announcements: [],
+            documents_count: 0,
+            announcements_count: 0,
+            apps: [],
+            searchQuery: "",
+            timerSeconds: 0,
+            timerRunning: false,
+            leaveChartData: [],
+            attendanceChartData: [], // NEW
+            deptChartData: [],
+            chartLoaded: false,
+            leaveBalances: [],
+            teamMembers: [],
+            skills: [],
+            ongoingActivities: {
+                todo: 0,
+                call: 0,
+                meeting: 0,
+                email: 0,
+                followup: 0,
+            },
+            leaveBalancePopupOpen: false,
+            leaveBalanceSummary: {
+                total_allocated: 0,
+                total_taken: 0,
+                total_remaining: 0,
+                num_leave_types: 0,
+            },
+            currentAnnouncementIndex: 0,
+            currentTime: new Date(),
+            // New quick stats
+            task_count: 0,
+            working_hours: 0,
+            // User menu state
+            userMenuOpen: false,
+            activitiesPanelOpen: false,
+            messagesPanelOpen: false,
+            messagesTab: "all",
+            activitiesSummary: [],
+            messagesList: [],
+            activityCount: 0,
+            messageCount: 0,
+            companies: [],
+            currentCompany: null,
+            currentUserId: false,
+            // Popup states
+            personalInfoPopupOpen: false,
+            attendanceTrendPopupOpen: false,
+            leaveTrendPopupOpen: false,
+            skillsPopupOpen: false,
         });
         
 
@@ -139,11 +287,12 @@ export class ZohoDashboard extends Component {
         this.sidebarItems = [
             { id: "home", icon: "🏠", label: "Home", action: "home" },
             { id: "profile", icon: "👤", label: "Profile", action: "profile" },
+            { id: "appraisal", icon: "📈", label: "Appraisals", model: "hr.appraisal", title: "My Appraisals" },
             { id: "leave", icon: "📅", label: "Leave", model: "hr.leave", title: "Time Off" },
             { id: "attendance", icon: "⏰", label: "Attendance", model: "hr.attendance", title: "My Attendance" },
             { id: "timesheet", icon: "⏱️", label: "Timesheets", model: "timesheet.report", title: "Time Log Summary" },
             { id: "payroll", icon: "💰", label: "Payroll", model: "hr.payslip", title: "My Payslips" },
-            { id: "expense", icon: "💳", label: "Expenses", model: "hr.expense", title: "My Expenses" },
+            // { id: "expense", icon: "💳", label: "Expenses", model: "hr.expense", title: "My Expenses" },
             // Task Management items with proper action references
             // { id: "my_tasks", icon: "📝", label: "My Tasks", model: "task.management", title: "My Tasks", actionKey: "my_tasks", actionXmlId: "task_management.action_my_tasks" },
             // { id: "team_tasks", icon: "👥", label: "Team Tasks", model: "task.management", title: "Team Tasks", actionKey: "team_tasks", actionXmlId: "task_management.action_team_tasks" },
@@ -155,10 +304,57 @@ export class ZohoDashboard extends Component {
             { id: "attendance", label: "Attendance" },
             { id: "leaves", label: "Leaves" },
             { id: "expenses", label: "Expenses" },
-            { id: "tasks", label: "Task Management" },  // CHANGED from "projects"
+            // { id: "appraisals", label: "Appraisals" },
+            { id: "employee_applications", label: "Employee Application" },
+            { id: "tasks", label: "Task Management" },
             // { id: "projects", label: "Projects" },
             { id: "notifications", label: "Notifications" },
         ];
+        // Handler to open EAMS Employee Application view
+        // Fetch a summary of the current user's applications for the tab
+        this.loadEmployeeApplicationsSummary = async () => {
+            const userId = this.state.employee?.user_id?.[0] || this.state.employee?.user_id;
+            if (!userId) {
+                this.state.employeeApplicationsSummary = [];
+                return;
+            }
+            try {
+                const apps = await this.orm.searchRead(
+                    "eams.employee.application",
+                    [["user_id", "=", userId]],
+                    ["id", "application_number", "application_type_id", "state", "request_date", "subject"],
+                    { limit: 5, order: "create_date desc" }
+                );
+                this.state.employeeApplicationsSummary = apps;
+            } catch (e) {
+                this.state.employeeApplicationsSummary = [];
+            }
+        };
+
+        // Handler to open EAMS Employee Application view (full app)
+        // Consistent with other tabs: use employee_id for domain, use loadEmbeddedView for 'View All'
+        this.openAllEmployeeApplications = () => {
+            this.loadEmbeddedView(
+                "eams.employee.application",
+                "Employee Applications",
+                this.state.employee?.id ? [["employee_id", "=", this.state.employee.id]] : [],
+                "list"
+            );
+        };
+
+        // Handler to open a single application record in embedded mode
+        // Consistent with other tabs: use doAction for popup
+        this.onEmployeeApplicationRowClick = async (app) => {
+            if (!app || !app.id) return;
+            await this.actionService.doAction({
+                type: "ir.actions.act_window",
+                name: _t("Employee Application"),
+                res_model: "eams.employee.application",
+                res_id: app.id,
+                views: [[false, "form"]],
+                target: "new",
+            });
+        };
 
         this.mainTabs = [
             { id: "myspace", label: "My Space" },
@@ -186,6 +382,14 @@ export class ZohoDashboard extends Component {
             await this.loadInitialData();
             await this.loadPhase4Data();
             await this.loadUserMenuData();
+            // After employee/user state is loaded, load the EAMS count
+            await this.loadManagerEmployeeApplicationsCount();
+            // Fallback: if count is still 0, try again after 2 seconds
+            setTimeout(() => {
+                if (!this.state.managerEmployeeApplicationsCount) {
+                    this.loadManagerEmployeeApplicationsCount();
+                }
+            }, 2000);
         });
 
         onMounted(() => {
@@ -4552,6 +4756,19 @@ export class ZohoDashboard extends Component {
     }
 
     async loadInitialData() {
+        // Employee Applications (EAMS) - count only 'submitted' for current employee
+        let employeeApplicationsCount = 0;
+        try {
+            const empId = this.state.employee?.id;
+            let domain = [["state", "=", "submitted"]];
+            if (empId) {
+                domain.push(["employee_id", "=", empId]);
+            }
+            employeeApplicationsCount = await this.orm.searchCount("eams.employee.application", domain);
+        } catch (e) {
+            employeeApplicationsCount = 0;
+        }
+        this.state.managerEmployeeApplicationsCount = employeeApplicationsCount;
         // Fetch ongoing activities counts using backend method for accurate mapping
         try {
             const activityTypes = await this.orm.call("hr.employee", "get_dashboard_activity_types", []);
@@ -4798,6 +5015,8 @@ export class ZohoDashboard extends Component {
                 console.error("[DASHBOARD] Error calculating working hours:", e);
                 workingHours = 0;
             }
+            // Format to two decimal places for display
+            const workingHoursDisplay = Number(workingHours).toFixed(2);
 
             // Attendance Trend Chart Data (group by date, sum worked_hours)
             let attendanceChartData = [];
@@ -4839,11 +5058,13 @@ export class ZohoDashboard extends Component {
                 payslip_count: payslipCount,
                 documents_count: docCount,
                 announcements_count: annCount,
+                working_hours: workingHoursDisplay,
+                employee_applications: employeeApplicationsCount,
             };
             this.state.timesheet_planned_hours = timesheetPlannedHours;
             this.state.timesheet_actual_hours = timesheetActualHours;
             this.state.task_count = taskCount;
-            this.state.working_hours = workingHours;
+            this.state.working_hours = workingHoursDisplay;
             this.state.attendanceChartData = attendanceChartData;
             this.state.leaveChartData = leaveChartData;
             console.log("[DASHBOARD] Updated employee counts and quick stats:", {
@@ -6089,6 +6310,11 @@ export class ZohoDashboard extends Component {
         this.state.activeTab = tabId;
         if (tabId === "activities") setTimeout(() => this.renderLeaveChart(), 300);
         if (tabId === "manager" && this.state.isManager) setTimeout(() => this.renderDeptChart(), 300);
+        if (tabId === "employee_applications") {
+            this.loadEmployeeApplicationsSummary();
+        }
+        // Add state for summary
+        this.state.employeeApplicationsSummary = [];
     }
 
     onSearchInput(event) {

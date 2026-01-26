@@ -535,8 +535,12 @@
                                                     <strong t-esc="state.employee?.leaves_today or 0"/>
                                                 </div>
                                                 <div class="manager_action_row" t-on-click="openJobApplications">
-                                                    <span>Applications</span>
+                                                    <span>Job Application</span>
                                                     <strong t-esc="state.employee?.job_applications or 0"/>
+                                                </div>
+                                                <div class="manager_action_row" t-on-click="openManagerEmployeeApplications">
+                                                    <span>Employee Application</span>
+                                                    <strong t-esc="state.employee?.employee_applications || 0"/>
                                                 </div>
                                             </div>
                                         </t>
@@ -1086,6 +1090,50 @@
                                                     </t>
                                                 </div>
                                             </div>
+                                        </div>
+
+                                        <!-- Employee Application Tab Panel -->
+                                        <div class="tab_panel" t-att-class="{ 'is-active': state.activeTab === 'employee_applications' }">
+                                            <div class="section_header">
+                                                <h3>Employee Applications</h3>
+                                                <div class="section_actions">
+                                                      <button class="btn_outline" t-on-click="openAllEmployeeApplications">View All</button>
+                                                      <button class="btn_primary" t-on-click="addEmployeeApplication">+ Add</button>
+                                                </div>
+                                            </div>
+                                            <div class="data_table_wrapper">
+                                                <table class="data_table">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Application No</th>
+                                                            <th>Type</th>
+                                                            <th>Subject</th>
+                                                            <th>Date</th>
+                                                            <th>Status</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <t t-set="apps" t-value="state.employeeApplicationsSummary or []"/>
+                                                        <t t-foreach="apps" t-as="app" t-key="app.id">
+                                                            <tr t-on-click="() => this.onEmployeeApplicationRowClick(app)" class="clickable_row">
+                                                                <td t-esc="app.application_number"/>
+                                                                <td t-esc="app.application_type_id and app.application_type_id[1]"/>
+                                                                <td t-esc="app.subject"/>
+                                                                <td t-esc="app.request_date"/>
+                                                                <td><span class="status_badge" t-esc="app.state"/></td>
+                                                            </tr>
+                                                        </t>
+                                                        <t t-if="!apps.length">
+                                                            <tr><td colspan="5" class="empty_cell">No applications found</td></tr>
+                                                        </t>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                            <t t-if="embeddedState.isEmbeddedMode and embeddedState.currentResModel == 'eams.employee.application'">
+                                                <div class="embedded_view_wrapper">
+                                                    <View t-props="embeddedState.viewProps"/>
+                                                </div>
+                                            </t>
                                         </div>
 
                                         <!-- Manager Tab -->
