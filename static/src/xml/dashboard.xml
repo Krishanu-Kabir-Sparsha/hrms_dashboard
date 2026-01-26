@@ -1028,16 +1028,17 @@
                                                 <table class="data_table">
                                                     <thead>
                                                         <tr>
-                                                            <th>Task Name</th>
-                                                            <th>Priority</th>
-                                                            <th>Due Date</th>
-                                                            <th>Status</th>
+                                                            <th class="table_header">Task Name</th>
+                                                            <th class="table_header">Assigned To</th>
+                                                            <th class="table_header">Due Date</th>
+                                                            <th class="table_header">Status</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody>
                                                         <t t-foreach="state.tasks" t-as="task" t-key="task.id">
                                                             <tr t-on-click="() => this.onTaskRowClick(task)">
                                                                 <td t-esc="task.name"/>
+                                                                <td t-esc="task.assigned_to || '-'"/>
                                                                 <td t-esc="task.priority"/>
                                                                 <td t-esc="task.deadline"/>
                                                                 <td><span class="status_badge" style="background:#6c757d;" t-esc="task.stage"/></td>

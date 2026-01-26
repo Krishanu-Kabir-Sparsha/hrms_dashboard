@@ -639,29 +639,32 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
 
 /* Calendar embedded wrapper */
 .embedded_view_wrapper[data-view-type="calendar"] {
-    height: 100%;
-    min-height: 500px;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
+    /* Remove forced height, min-height, flex, and overflow for default Odoo calendar layout */
+    /* height: 100%; */
+    /* min-height: 500px; */
+    /* display: flex; */
+    /* flex-direction: column; */
+    /* overflow: hidden; */
 }
 
 .embedded_view_wrapper[data-view-type="calendar"] > * {
-    flex: 1;
-    min-height: 0;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
+    /* Remove forced flex and height for default Odoo calendar layout */
+    /* flex: 1; */
+    /* min-height: 0; */
+    /* height: 100%; */
+    /* display: flex; */
+    /* flex-direction: column; */
 }
 
 /* Calendar view needs explicit height */
 .embedded_view_wrapper[data-view-type="calendar"] .o_calendar_view,
 .embedded_view_wrapper .o_calendar_view {
-    height: 100% !important;
-    min-height: 500px !important;
-    flex: 1;
-    display: flex;
-    flex-direction: column;
+    /* Remove forced height, min-height, flex, and display for default Odoo calendar layout */
+    /* height: 100% !important; */
+    /* min-height: 500px !important; */
+    /* flex: 1; */
+    /* display: flex; */
+    /* flex-direction: column; */
 }
 
 /* Calendar renderer */
@@ -674,22 +677,25 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
 
 /* FullCalendar needs explicit dimensions */
 .embedded_view_wrapper .fc {
-    height: 100% !important;
-    min-height: 450px !important;
-    flex: 1;
-    display: flex;
-    flex-direction: column;
+    /* Remove forced height, min-height, flex, and display for default Odoo calendar layout */
+    /* height: 100% !important; */
+    /* min-height: 450px !important; */
+    /* flex: 1; */
+    /* display: flex; */
+    /* flex-direction: column; */
 }
 
 .embedded_view_wrapper .fc-view-harness {
-    height: 100% !important;
-    min-height: 400px !important;
-    flex: 1;
+    /* Remove forced height, min-height, flex for default Odoo calendar layout */
+    /* height: 100% !important; */
+    /* min-height: 400px !important; */
+    /* flex: 1; */
 }
 
 .embedded_view_wrapper .fc-view-harness-active {
-    position: absolute !important;
-    inset: 0 !important;
+    /* Remove forced absolute positioning for default Odoo calendar layout */
+    /* position: absolute !important; */
+    /* inset: 0 !important; */
 }
 
 /* Calendar sidebar */
@@ -702,9 +708,10 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
 
 /* Calendar container with sidebar */
 .embedded_view_wrapper .o_calendar_container {
-    display: flex;
-    height: 100%;
-    min-height: 0;
+    /* Remove forced flex and height for default Odoo calendar layout */
+    /* display: flex; */
+    /* height: 100%; */
+    /* min-height: 0; */
 }
 
 .embedded_view_wrapper .o_calendar_container > .o_calendar_sidebar_container {
@@ -747,22 +754,25 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
 /* Time Off / Leave dashboard calendar */
 .embedded_view_wrapper .o_hr_holidays_dashboard,
 .embedded_view_wrapper .o_leave_stats_dashboard {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
+    /* Remove forced height, flex, and overflow for default Odoo layout */
+    /* height: 100%; */
+    /* display: flex; */
+    /* flex-direction: column; */
+    /* overflow: hidden; */
 }
 
 .embedded_view_wrapper .o_hr_holidays_dashboard > *,
 .embedded_view_wrapper .o_leave_stats_dashboard > * {
-    flex: 1;
-    min-height: 0;
+    /* Remove forced flex for default Odoo layout */
+    /* flex: 1; */
+    /* min-height: 0; */
 }
 
 .embedded_view_wrapper .o_hr_holidays_dashboard .o_calendar_view,
 .embedded_view_wrapper .o_leave_stats_dashboard .o_calendar_view {
-    min-height: 500px;
-    height: 100%;
+    /* Remove forced min-height and height for default Odoo layout */
+    /* min-height: 500px; */
+    /* height: 100%; */
 }
 
 /* Leave calendar specific */
@@ -773,9 +783,10 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
 }
 
 .embedded_view_wrapper .o_leave_stats_dashboard .o_leave_calendar {
-    flex: 1;
-    min-height: 400px;
-    height: 100%;
+    /* Remove forced flex and height for default Odoo layout */
+    /* flex: 1; */
+    /* min-height: 400px; */
+    /* height: 100%; */
 }
 
 /* Calendar mini (in sidebar) */
@@ -2743,13 +2754,13 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
 }
 
 .leave_balance_card {
-    background: linear-gradient(135deg, #8f9ee5 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #7fd5b5 0%, #86e7e7 50%, #7fc7e3 100%);
     border-radius: var(--radius);
     padding: 20px;
     cursor: pointer;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     box-shadow: var(--shadow-sm);
-    color: white;
+    color: rgb(68, 68, 68);
 }
 
 .leave_balance_card:hover {
@@ -2761,7 +2772,7 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
     margin: 0 0 16px;
     font-size: 15px;
     font-weight: 600;
-    color: white;
+    color: darkblue;
     opacity: 0.95;
 }
 
@@ -2780,18 +2791,20 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
 
 .leave_summary_value {
     font-size: 24px;
-    font-weight: 700;
-    color: white;
+    font-weight: 800;
+    color: #1a2a3a;
     display: block;
     margin-bottom: 4px;
+    text-shadow: 0 0 8px #fff, 0 0 2px #7fc7e3;
 }
 
 .leave_summary_label {
-    font-size: 11px;
-    color: rgba(255, 255, 255, 0.85);
+    font-size: 12px;
+    color: #1a2a3a;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    font-weight: 500;
+    font-weight: 700;
+    text-shadow: 0 0 6px #fff, 0 0 2px #7fc7e3;
 }
 
 /* ============ LEAVE BALANCE POPUP ============ */
@@ -3109,31 +3122,30 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
 }
 
 .welcome_section h2 {
-    font-size: 26px;
-    font-weight: 700;
-    margin: 0 0 8px;
+    font-size: 32px;
+    font-weight: 800;
+    margin: 0 0 16px;
     color: #fff;
-    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-    position: relative;
-    display: inline-block;
+    opacity: 1;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.10);
 }
 
 .welcome_section h2::after {
     content: '';
-    position: absolute;
-    bottom: -4px;
-    left: 0;
-    width: 60%;
-    height: 3px;
-    background: linear-gradient(90deg, var(--sidebar-accent), transparent);
+    display: block;
+    position: relative;
+    margin-top: 6px;
+    width: 120px;
+    height: 4px;
+    background: linear-gradient(90deg, #1de9b6 0%, #00bfae 100%);
     border-radius: 2px;
 }
 
 .welcome_section p {
     margin: 0;
     opacity: 0.95;
-    font-size: 14px;
-    color: rgba(255, 255, 255, 0.9);
+    font-size: 16px;
+    color: #fff;
     font-weight: 400;
     letter-spacing: 0.3px;
 }
@@ -3367,6 +3379,7 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
 /* Personal Info card - make it span 1 column only */
 .info_card.personal_info_card {
     grid-column: span 1;
+    color: var(--text-medium);
 }
 
 /* Chart cards - each spans 1 column */
@@ -3757,9 +3770,9 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
 .data_table th {
     text-align: left;
     padding: 13px 16px;
-    font-size: 10px;
-    font-weight: 600;
-    color: var(--text-light);
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--text-dark);
     text-transform: uppercase;
     letter-spacing: 0.3px;
     background: #fafafa;
@@ -3768,7 +3781,7 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
 
 .data_table td {
     padding: 13px 16px;
-    font-size: 13px;
+    font-size: 14px;
     color: var(--text-dark);
     border-bottom: 1px solid var(--border-light);
 }
@@ -3785,7 +3798,7 @@ body.zoho-dashboard-active .o_action_manager > *:not(.zoho_spa_wrapper) {
 .empty_cell {
     text-align: center;
     padding: 40px !important;
-    color: var(--text-light);
+    color: var(--text-dark);
 }
 
 .status_badge {

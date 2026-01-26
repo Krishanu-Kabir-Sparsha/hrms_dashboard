@@ -6312,9 +6312,44 @@ export class ZohoDashboard extends Component {
         if (tabId === "manager" && this.state.isManager) setTimeout(() => this.renderDeptChart(), 300);
         if (tabId === "employee_applications") {
             this.loadEmployeeApplicationsSummary();
+            this.state.employeeApplicationsSummary = [];
         }
-        // Add state for summary
-        this.state.employeeApplicationsSummary = [];
+        if (tabId === "tasks") {
+            this.loadTasksForCurrentUser();
+        }
+    }
+
+    // Load tasks for the current employee's user_id for the dashboard tab
+    async loadTasksForCurrentUser() {
+        try {
+            let userId = null;
+            if (this.state.employee && this.state.employee.user_id) {
+                userId = Array.isArray(this.state.employee.user_id)
+                    ? this.state.employee.user_id[0]
+                    : this.state.employee.user_id;
+            } else if (this.state.currentUserId) {
+                userId = this.state.currentUserId;
+            }
+            if (!userId) {
+                this.state.tasks = [];
+                return;
+            }
+            const tasks = await this.orm.searchRead(
+                "task.management",
+                [["user_id", "=", userId]],
+                ["id", "name", "user_id", "date_deadline", "stage_id"],
+                { limit: 10, order: "date_deadline asc" }
+            );
+            this.state.tasks = tasks.map(t => ({
+                id: t.id,
+                name: t.name || '',
+                assigned_to: t.user_id ? (Array.isArray(t.user_id) ? t.user_id[1] : t.user_id) : '-',
+                deadline: t.date_deadline ? t.date_deadline.split(' ')[0] : '-',
+                stage: t.stage_id ? t.stage_id[1] : 'New',
+            }));
+        } catch (e) {
+            this.state.tasks = [];
+        }
     }
 
     onSearchInput(event) {
