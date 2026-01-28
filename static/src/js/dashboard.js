@@ -4990,14 +4990,15 @@ export class ZohoDashboard extends Component {
                     [
                         ["user_id", "=", this.state.currentUserId || this.state.employee?.user_id?.[0]]
                     ],
-                    ["name", "priority", "deadline", "stage_id"],
-                    { limit: 10, order: "deadline asc" }
+                    ["id", "name", "user_id", "date_start", "date_deadline", "stage_id"],
+                    { limit: 10, order: "date_deadline asc" }
                 );
                 this.state.tasks = tasks.map(t => ({
                     id: t.id,
                     name: t.name || '',
-                    priority: t.priority || 'Normal',
-                    deadline: t.deadline ? t.deadline.split(' ')[0] : '-',
+                    assigned_to: t.user_id ? (Array.isArray(t.user_id) ? t.user_id[1] : t.user_id) : '-',
+                    date_start: t.date_start ? t.date_start : '-',
+                    deadline: t.date_deadline ? t.date_deadline : '-',
                     stage: t.stage_id ? t.stage_id[1] : 'New',
                 }));
             } catch (e) {
@@ -6337,14 +6338,15 @@ export class ZohoDashboard extends Component {
             const tasks = await this.orm.searchRead(
                 "task.management",
                 [["user_id", "=", userId]],
-                ["id", "name", "user_id", "date_deadline", "stage_id"],
+                ["id", "name", "user_id", "date_start", "date_deadline", "stage_id"],
                 { limit: 10, order: "date_deadline asc" }
             );
             this.state.tasks = tasks.map(t => ({
                 id: t.id,
                 name: t.name || '',
                 assigned_to: t.user_id ? (Array.isArray(t.user_id) ? t.user_id[1] : t.user_id) : '-',
-                deadline: t.date_deadline ? t.date_deadline.split(' ')[0] : '-',
+                date_start: t.date_start ? t.date_start : '-',
+                deadline: t.date_deadline ? t.date_deadline : '-',
                 stage: t.stage_id ? t.stage_id[1] : 'New',
             }));
         } catch (e) {
