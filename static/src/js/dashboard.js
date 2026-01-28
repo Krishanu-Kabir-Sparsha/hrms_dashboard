@@ -25,11 +25,45 @@ class DynamicAction extends Component {
 }
 
 export class ZohoDashboard extends Component {
+    // Main dashboard data loader for Home view
+    async loadDashboardData() {
+        // Example: reload employee, tasks, projects, announcements, etc.
+        // You should expand this to match your actual dashboard data needs
+        try {
+            // Example: reload employee
+            if (this.loadEmployee) {
+                await this.loadEmployee();
+            }
+            // Example: reload tasks
+            if (this.loadTasksForCurrentUser) {
+                await this.loadTasksForCurrentUser();
+            }
+            // Example: reload projects
+            if (this.loadProjectsForCurrentUser) {
+                await this.loadProjectsForCurrentUser();
+            }
+            // Example: reload announcements
+            if (this.loadAnnouncements) {
+                await this.loadAnnouncements();
+            }
+            // Add more as needed for your dashboard
+        } catch (e) {
+            this.notification.add(_t("Failed to refresh dashboard data"), { type: "danger" });
+        }
+    }
+    // Refresh Home Dashboard handler
+    refreshHomeDashboard = () => {
+        if (this.state.currentView === "home") {
+            this.loadDashboardData();
+        }
+    }
     static template = "hrms_dashboard.ZohoDashboard";
     static props = ["*"];
     static components = { View, DynamicAction };
 
     setup() {
+        // Navigation forward stack for Next button
+        this.forwardActionStack = [];
         // Core Services
         this.actionService = useService("action");
         this.orm = useService("orm");
@@ -4147,14 +4181,25 @@ export class ZohoDashboard extends Component {
     // Add method to go back in action stack
     goBackInActionStack() {
         if (this.actionStack.length === 0) {
-            console.log("📚 Action stack empty, closing embedded view");
             this.closeEmbeddedView();
             return;
         }
+        // Push current state to forward stack for Next
+        const currentState = {
+            resModel: this.embeddedState.currentResModel,
+            viewType: this.embeddedState.currentViewType,
+            domain: this.embeddedState.currentDomain,
+            context: this.embeddedState.currentContext,
+            views: this.embeddedState.currentViews,
+            resId: this.embeddedState.currentResId,
+            title: this.embeddedState.viewTitle,
+            breadcrumbs: this.embeddedState.breadcrumbs,
+            isClientAction: this.embeddedState.isClientAction,
+            actionId: this.embeddedState.currentActionId,
+        };
+        this.forwardActionStack.push(currentState);
 
         const previousState = this.actionStack.pop();
-        console.log("📚 Popping from action stack, remaining:", this.actionStack.length);
-
         // Restore state
         this.embeddedState.currentResModel = previousState.resModel;
         this.embeddedState.currentViewType = previousState.viewType;
@@ -4185,6 +4230,62 @@ export class ZohoDashboard extends Component {
                     previousState.domain,
                     previousState.context,
                     previousState.resId
+                );
+            }
+        } else {
+            this.closeEmbeddedView();
+        }
+    }
+
+    // Add method to go forward in action stack
+    goForwardInActionStack() {
+        if (!this.forwardActionStack.length) return;
+        // Push current state to back stack
+        const currentState = {
+            resModel: this.embeddedState.currentResModel,
+            viewType: this.embeddedState.currentViewType,
+            domain: this.embeddedState.currentDomain,
+            context: this.embeddedState.currentContext,
+            views: this.embeddedState.currentViews,
+            resId: this.embeddedState.currentResId,
+            title: this.embeddedState.viewTitle,
+            breadcrumbs: this.embeddedState.breadcrumbs,
+            isClientAction: this.embeddedState.isClientAction,
+            actionId: this.embeddedState.currentActionId,
+        };
+        this.actionStack.push(currentState);
+
+        const nextState = this.forwardActionStack.pop();
+        // Restore state
+        this.embeddedState.currentResModel = nextState.resModel;
+        this.embeddedState.currentViewType = nextState.viewType;
+        this.embeddedState.currentDomain = nextState.domain;
+        this.embeddedState.currentContext = nextState.context;
+        this.embeddedState.currentViews = nextState.views || [];
+        this.embeddedState.currentResId = nextState.resId;
+        this.embeddedState.viewTitle = nextState.title;
+        this.embeddedState.breadcrumbs = nextState.breadcrumbs;
+        this.embeddedState.isClientAction = nextState.isClientAction;
+        this.embeddedState.currentActionId = nextState.actionId;
+
+        // Rebuild the view
+        if (nextState.isClientAction && nextState.actionId) {
+            this.loadClientAction(nextState.actionId);
+        } else if (nextState.resModel) {
+            if (nextState.viewType === "calendar") {
+                this.loadCalendarViaAction(
+                    nextState.resModel,
+                    nextState.title,
+                    nextState.domain,
+                    nextState.context
+                );
+            } else {
+                this.buildDynamicViewProps(
+                    nextState.resModel,
+                    nextState.viewType,
+                    nextState.domain,
+                    nextState.context,
+                    nextState.resId
                 );
             }
         } else {

@@ -46,10 +46,22 @@
                                                 t-on-click="() => this.onMainTabClick(tab.id)"
                                                 t-esc="tab.label"/>
                                     </t>
+                                    <button class="header_tab refresh_tab_btn" t-on-click="refreshHomeDashboard" title="Refresh Home">
+                                        ⟳
+                                    </button>
                                 </div>
                             </t>
                             <t t-else="">
                                 <div class="header_breadcrumb">
+                                    <button class="breadcrumb_nav_btn" t-on-click="goBackInActionStack" title="Previous">
+                                        ←
+                                    </button>
+                                    <button class="breadcrumb_nav_btn" t-on-click="goForwardInActionStack" title="Next">
+                                        →
+                                    </button>
+                                    <button class="breadcrumb_nav_btn" t-on-click="refreshEmbeddedView" title="Refresh">
+                                        ⟳
+                                    </button>
                                     <button class="breadcrumb_home" t-on-click="closeEmbeddedView">
                                         🏠 Dashboard
                                     </button>
